@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { durationSeconds, searchVideos, videoStats, type Video } from './api';
 import { channelProfiles, creatorTagline, formatAge, formatCount, wikipediaFor, type CreatorProfile } from './creators';
-import { fetchHomeRow, topicsQuery } from './homeRows';
+import { clearWeekPools, fetchHomeRow, topicsQuery } from './homeRows';
 
 // Real helpers stay in place; the API surface that touches the network is replaced.
 vi.mock('./api', async original => ({
@@ -143,7 +143,7 @@ describe('topicsQuery', () => {
   });
 
   it('uses every topic when none is selected', () => {
-    expect(topicsQuery([])).toBe(['AI agents', 'React frontend', 'backend engineering', 'system design', 'DevOps'].join(' | '));
+    expect(topicsQuery([])).toBe(['AI agents', 'React JS', 'backend engineering', 'system design', 'DevOps'].join(' | '));
   });
 });
 
@@ -151,6 +151,7 @@ describe('fetchHomeRow (live mode)', () => {
   const video = (id: string, channelId?: string): Video => ({ id, title: id, channel: channelId ?? 'none', channelId, description: '', thumbnail: '' });
 
   beforeEach(() => {
+    clearWeekPools();
     vi.mocked(searchVideos).mockReset();
     vi.mocked(videoStats).mockReset();
     vi.mocked(channelProfiles).mockReset();
@@ -162,6 +163,49 @@ describe('fetchHomeRow (live mode)', () => {
     vi.mocked(videoStats).mockResolvedValue(Object.fromEntries(entries.map(([id, , views]) => [id, { views }])));
     vi.mocked(channelProfiles).mockResolvedValue(Object.fromEntries(Object.entries(subscribers).map(([id, subs]) => [id, { id, title: id, description: '', subscribers: subs } satisfies CreatorProfile])));
   }
+
+  it('hot: searches each topic for this week, ranks by real views per day, and alternates topics', async () => {
+    const day = 86_400_000;
+    const at = (daysOld: number) => new Date(Date.now() - daysOld * day).toISOString();
+    const v = (id: string, daysOld: number): Video => ({ ...video(id, `UC${id}`), publishedAt: at(daysOld) });
+    vi.mocked(searchVideos).mockImplementation(async ({ q }) => q === 'AI agents'
+      ? [v('ai-slow', 5), v('ai-fast', 1), v('ai-small', 1)]
+      : [v('be-fast', 1), v('be-short', 1)]);
+    vi.mocked(videoStats).mockResolvedValue({
+      'ai-slow': { views: 100_000, duration: 'PT20M' },  // 20K/day
+      'ai-fast': { views: 80_000, duration: 'PT12M' },   // 80K/day
+      'ai-small': { views: 400, duration: 'PT12M' },     // under 10K: not hot
+      'be-fast': { views: 15_000, duration: 'PT30M' },
+      'be-short': { views: 900_000, duration: 'PT50S' }, // a Short
+    });
+
+    const rows = await fetchHomeRow('hot', ['AI & Agents', 'Backend']);
+
+    expect(rows.map(r => r.id)).toEqual(['ai-fast', 'be-fast', 'ai-slow']);
+    expect(searchVideos).toHaveBeenCalledTimes(2);
+    expect(searchVideos).toHaveBeenCalledWith(expect.objectContaining({ q: 'AI agents', order: 'viewCount', maxResults: 50 }), undefined);
+    expect(searchVideos).toHaveBeenCalledWith(expect.objectContaining({ q: 'backend engineering', order: 'viewCount', maxResults: 50 }), undefined);
+  });
+
+  it('keeps creators in preferred regions or with no listed country', async () => {
+    const recent = (id: string): Video => ({ ...video(id, `UC${id}`), publishedAt: new Date(Date.now() - 86_400_000).toISOString() });
+    vi.mocked(searchVideos).mockResolvedValue([recent('us'), recent('in'), recent('blank')]);
+    vi.mocked(videoStats).mockResolvedValue({ us: { views: 50_000, duration: 'PT10M' }, in: { views: 90_000, duration: 'PT10M' }, blank: { views: 20_000, duration: 'PT10M' } });
+    vi.mocked(channelProfiles).mockResolvedValue({ UCus: { id: 'UCus', title: 'us', description: '', country: 'US' }, UCin: { id: 'UCin', title: 'in', description: '', country: 'IN' }, UCblank: { id: 'UCblank', title: 'blank', description: '' } });
+
+    const rows = await fetchHomeRow('hot', ['DevOps']);
+
+    expect(rows.map(r => r.id)).toEqual(['us', 'blank']);
+  });
+
+  it('hot and rising share the weekly per-topic searches', async () => {
+    vi.mocked(searchVideos).mockResolvedValue([]);
+    vi.mocked(videoStats).mockResolvedValue({});
+    vi.mocked(channelProfiles).mockResolvedValue({});
+    await fetchHomeRow('hot', ['DevOps']);
+    await fetchHomeRow('rising', ['DevOps']);
+    expect(searchVideos).toHaveBeenCalledTimes(1);
+  });
 
   it('rising: keeps only channels with 1K to 250K subscribers, ranked by views per subscriber', async () => {
     mockRising([
@@ -178,12 +222,10 @@ describe('fetchHomeRow (live mode)', () => {
     const rows = await fetchHomeRow('rising', ['Frontend']);
 
     expect(rows.map(v => v.id)).toEqual(['a', 'e', 'h', 'g', 'f']);
-    expect(searchVideos).toHaveBeenCalledWith(expect.objectContaining({ q: 'React frontend', order: 'viewCount', maxResults: 50 }), undefined);
+    expect(searchVideos).toHaveBeenCalledWith(expect.objectContaining({ q: 'React JS', order: 'viewCount', maxResults: 50 }), undefined);
     expect(channelProfiles).toHaveBeenCalledWith(expect.arrayContaining(['UCmid', 'UCbig']), undefined);
   });
 
-  // Known source bug: onePerChannel builds new Map(videos.map(v => [channel, v])), and a Map keeps the LAST value per key,
-  // so the lower-ranked of two videos from one channel wins. Remove `.fails` once homeRows.ts keeps the first (top-ranked) one.
   it('rising: keeps the top-ranked video when one channel has several qualifying videos', async () => {
     mockRising([
       ['a', 'UCsmall', 50_000],  // score 10, ranked first
@@ -195,25 +237,27 @@ describe('fetchHomeRow (live mode)', () => {
     expect(rows.map(v => v.id)).toEqual(['a']);
   });
 
-  it('quick: keeps only videos of 10 minutes or less, using real durations', async () => {
+  it('quick: keeps only videos of 10 minutes or less with 5K+ views, using real durations', async () => {
     vi.mocked(searchVideos).mockResolvedValue([
       video('short'),     // PT5M
       video('long'),      // PT1H
       video('edge'),      // PT10M, exactly 600 seconds
       video('over'),      // PT10M1S
       video('nostats'),   // no duration returned, so it cannot be verified
+      video('unseen'),    // PT5M but only 400 views
     ]);
     vi.mocked(videoStats).mockResolvedValue({
-      short: { duration: 'PT5M' },
-      long: { duration: 'PT1H' },
-      edge: { duration: 'PT10M' },
-      over: { duration: 'PT10M1S' },
+      short: { duration: 'PT5M', views: 12_000 },
+      long: { duration: 'PT1H', views: 12_000 },
+      edge: { duration: 'PT10M', views: 5_000 },
+      over: { duration: 'PT10M1S', views: 12_000 },
+      unseen: { duration: 'PT5M', views: 400 },
     });
 
     const rows = await fetchHomeRow('quick', ['AI & Agents']);
 
     expect(rows.map(v => v.id)).toEqual(['short', 'edge']);
     expect(searchVideos).toHaveBeenCalledWith(expect.objectContaining({ q: 'AI agents explained', videoDuration: 'medium', maxResults: 50 }), undefined);
-    expect(videoStats).toHaveBeenCalledWith(['short', 'long', 'edge', 'over', 'nostats'], undefined);
+    expect(videoStats).toHaveBeenCalledWith(['short', 'long', 'edge', 'over', 'nostats', 'unseen'], undefined);
   });
 });

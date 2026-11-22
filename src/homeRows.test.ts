@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { searchVideos, type Video, type VideoSearch } from './api';
-import { allowedAge, freshSearch } from './homeRows';
+import { allowedAge, freshSearch, rankHot } from './homeRows';
 
 // Real daysAgo stays in place (it reads the faked clock); only the network call is replaced.
 vi.mock('./api', async importOriginal => ({
@@ -87,5 +87,28 @@ describe('freshSearch', () => {
     expect(searchVideos).toHaveBeenCalledTimes(1);
     expect(vi.mocked(searchVideos).mock.calls[0][0].publishedAfter).toBe(new Date(Math.floor((now - 1825 * DAY) / DAY) * DAY).toISOString());
     expect(results.map(v => v.id)).toEqual(['sd']);
+  });
+});
+
+describe('rankHot', () => {
+  it('needs 10K+ views, skips Shorts, and ranks by views per day', () => {
+    const videos = [
+      video('tiny', 'Small upload', 5),           // 400 views: not hot
+      video('short', 'Viral short', 1),           // 2M views but 45 seconds
+      video('steady', 'Big but slow', 6),         // 120K over 6 days = 20K/day
+      video('fast', 'Taking off', 1),             // 60K in 1 day = 60K/day
+      video('edge', 'Exactly the bar', 2),        // 25K over 2 days
+    ];
+    const stats = {
+      tiny: { views: 400, duration: 'PT12M' },
+      short: { views: 2_000_000, duration: 'PT45S' },
+      steady: { views: 120_000, duration: 'PT20M' },
+      fast: { views: 60_000, duration: 'PT8M' },
+      edge: { views: 25_000, duration: 'PT5M' },
+    };
+    expect(rankHot(videos, stats, now).map(v => v.id)).toEqual(['fast', 'steady', 'edge']);
+  });
+  it('drops videos with unknown views or duration', () => {
+    expect(rankHot([video('x', 'No stats', 1)], {}, now)).toEqual([]);
   });
 });

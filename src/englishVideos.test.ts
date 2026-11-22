@@ -20,7 +20,7 @@ describe('isEnglishVideo', () => {
   });
 
   it('drops a video whose audio is not English even when the title is', () => {
-    expect(api.isEnglishVideo(video('b', 'React hooks explained'), { audio: 'hi' })).toBe(false);
+    expect(api.isEnglishVideo(video('b', 'React hooks explained'), { audio: 'de' })).toBe(false);
   });
 
   it('drops a video with no audio language but a non-English metadata language', () => {
@@ -48,9 +48,9 @@ describe('englishOnly', () => {
     const fetchMock = vi.fn(async (_url: string | URL | Request) => json({
       items: [
         { id: 'en', snippet: { defaultAudioLanguage: 'en' } },
-        { id: 'hi', snippet: { defaultAudioLanguage: 'hi', defaultLanguage: 'hi' } },
+        { id: 'hi', snippet: { defaultAudioLanguage: 'de', defaultLanguage: 'de' } },
         { id: 'es', snippet: { defaultLanguage: 'es' } },
-        { id: 'dev', snippet: { defaultLanguage: 'hi' } },
+        { id: 'dev', snippet: { defaultLanguage: 'de' } },
         { id: 'ru', snippet: {} },
       ],
     }));
