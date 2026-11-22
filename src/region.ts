@@ -1,8 +1,11 @@
+import { getSettings, type Settings } from './settings';
 /**
- * Discovery (home rows, creator suggestions, channel search) favours creators whose channel lists one of these
- * countries, matching the app's target audience. Creators who don't list a country are always included.
- * YouTube's Data API doesn't report where views come from, so the channel's listed country is the signal used.
- * Edit this list to target a different audience.
+ * Whether a creator fits the region chosen in Settings, judged from the country listed on their channel
+ * (YouTube's Data API doesn't report where views come from). "prefer" keeps creators with no listed country,
+ * "only" requires one of the chosen countries, "any" turns the check off.
  */
-export const PREFERRED_COUNTRIES = ['US', 'CA', 'GB', 'IE', 'AU', 'NZ'];
-export const isPreferredRegion = (country?: string) => !country || PREFERRED_COUNTRIES.includes(country.toUpperCase());
+export function isPreferredRegion(country?: string, settings: Settings = getSettings()): boolean {
+  if (settings.creatorRegion === 'any') return true;
+  if (!country) return settings.creatorRegion === 'prefer';
+  return settings.countries.includes(country.toUpperCase());
+}

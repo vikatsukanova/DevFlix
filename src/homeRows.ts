@@ -4,6 +4,7 @@ import type { Topic } from './classify';
 import { topicFeeds, maxAgeDays, FAST_MOVING_DAYS } from './topics';
 import { isClickbait, isDevRelated, isOffTopic, topicsForText } from './classify';
 import { isPreferredRegion } from './region';
+import { getSettings, settingsKey } from './settings';
 
 export type HomeRowId = 'hot' | 'deep' | 'quick' | 'rising';
 export const homeRows: { id: HomeRowId; title: string; subtitle: string }[] = [
@@ -76,11 +77,12 @@ export function clearWeekPools() { pools.clear(); }
 export async function weekPools(topics: Topic[], signal?: AbortSignal): Promise<Video[][]> {
   const chosen = topicFeeds.filter(f => !topics.length || topics.includes(f.topic));
   return Promise.all(chosen.map(feed => {
-    const cached = pools.get(feed.topic);
+    const poolKey = `${feed.topic}|${settingsKey()}`;
+    const cached = pools.get(poolKey);
     if (cached && Date.now() - cached.at < POOL_TTL) return cached.videos;
     const videos = searchVideos({ q: feed.keywords, order: 'viewCount', publishedAfter: daysAgo(7), maxResults: 50 }, signal);
-    pools.set(feed.topic, { at: Date.now(), videos });
-    videos.catch(() => pools.delete(feed.topic));
+    pools.set(poolKey, { at: Date.now(), videos });
+    videos.catch(() => pools.delete(poolKey));
     return videos;
   }));
 }
@@ -91,7 +93,8 @@ export function interleave(lists: Video[][]): Video[] {
   return out;
 }
 /** Discovery rows only show videos about dev or AI, and never politics, news or games. */
-export const isOnTopic = (v: Video) => isDevRelated(`${v.title}\n${v.description}`) && !isOffTopic(v.title);
+// The keyword lists are English, so for other languages discovery relies on YouTube's categories instead.
+export const isOnTopic = (v: Video) => getSettings().language !== 'en' || (isDevRelated(`${v.title}\n${v.description}`) && !isOffTopic(v.title));
 const ROW_LIMIT: Record<HomeRowId, number> = { hot: 25, deep: 25, quick: 25, rising: 20 };
 /** Keeps videos from creators in the preferred regions or with no listed country (1 unit per 50 channels). See region.ts. */
 export async function preferredRegionOnly(videos: Video[], signal?: AbortSignal): Promise<Video[]> {
@@ -142,4 +145,4 @@ async function rowCandidates(id: HomeRowId, topics: Topic[], signal?: AbortSigna
   }
 }
 
-export const homeRowKey = (id: HomeRowId, topics: Topic[]) => ['youtube', 'home-row', 'v4', id, [...topics].sort().join(',')] as const;
+export const homeRowKey = (id: HomeRowId, topics: Topic[]) => ['youtube', 'home-row', 'v4', id, [...topics].sort().join(','), settingsKey()] as const;

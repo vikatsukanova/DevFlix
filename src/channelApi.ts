@@ -1,18 +1,21 @@
-import { request, playlist, ApiError, isEnglishVideo, type Video, type VideoLanguage } from './api';
+import { request, playlist, ApiError, matchesLanguage, type Video, type VideoLanguage } from './api';
 const SAMPLE = 5;
 const channelLanguage = new Map<string, boolean>();
-/** A channel counts as English when most of its latest uploads are (same rules as `isEnglishVideo`). */
-export function isEnglishChannel(samples: { title: string; language?: VideoLanguage }[]): boolean {
+// Keyed by all settings (strict mode also changes the result), so a change made in another tab never reuses old answers.
+const langKey = (id: string) => `${settingsKey()}:${id}`;
+export function clearChannelLanguageCache() { channelLanguage.clear(); }
+/** A channel matches when most of its latest uploads are in the chosen language (same rules as `matchesLanguage`). */
+export function matchesChannelLanguage(samples: { title: string; language?: VideoLanguage }[]): boolean {
   if (!samples.length) return true;
-  return samples.filter(s => isEnglishVideo(s, s.language)).length / samples.length >= 0.6;
+  return samples.filter(s => matchesLanguage(s, s.language)).length / samples.length >= 0.6;
 }
 /**
  * Drops channels that mostly publish in other languages, judged from their latest uploads' spoken language.
  * Channel-level language fields are usually empty, so this samples 5 uploads per channel:
  * 1 unit per channel plus 1 per 50 videos, remembered for the session.
  */
-export async function englishChannels(channels: Channel[], signal?: AbortSignal): Promise<Channel[]> {
-  const unknown = channels.filter(c => c.uploadsId && !channelLanguage.has(c.id));
+export async function channelsInLanguage(channels: Channel[], signal?: AbortSignal): Promise<Channel[]> {
+  const unknown = channels.filter(c => c.uploadsId && !channelLanguage.has(langKey(c.id)));
   const uploads = await Promise.all(unknown.map(async c => {
     try {
       const page = await request<{ items: { snippet: { title: string; resourceId?: { videoId: string } } }[] }>('playlistItems', { part: 'snippet', playlistId: c.uploadsId!, maxResults: String(SAMPLE) }, signal);
@@ -28,11 +31,12 @@ export async function englishChannels(channels: Channel[], signal?: AbortSignal)
     const data = await request<{ items: { id: string; snippet?: { defaultAudioLanguage?: string; defaultLanguage?: string } }[] }>('videos', { part: 'snippet', id: ids.slice(i, i + 50).join(','), maxResults: '50' }, signal);
     for (const item of data.items) languages[item.id] = { audio: item.snippet?.defaultAudioLanguage, metadata: item.snippet?.defaultLanguage };
   }
-  for (const { channel, videos } of uploads) channelLanguage.set(channel.id, isEnglishChannel(videos.map(v => ({ title: v.title, language: languages[v.id] }))));
-  return channels.filter(c => channelLanguage.get(c.id) !== false);
+  for (const { channel, videos } of uploads) channelLanguage.set(langKey(channel.id), matchesChannelLanguage(videos.map(v => ({ title: v.title, language: languages[v.id] }))));
+  return channels.filter(c => channelLanguage.get(langKey(c.id)) !== false);
 }
 import { type Channel } from './channels';
 import { isPreferredRegion } from './region';
+import { settingsKey } from './settings';
 interface ChannelItem { id: string; snippet: { title: string; description: string; country?: string; thumbnails?: { medium?: { url: string } } }; contentDetails?: { relatedPlaylists: { uploads: string } } }
 export async function channelDetails(ids: string[], signal?: AbortSignal): Promise<Channel[]> {
   if (!ids.length) return [];
@@ -42,7 +46,7 @@ export async function channelDetails(ids: string[], signal?: AbortSignal): Promi
 export async function searchChannels(term: string, pageToken: string, signal?: AbortSignal) {
   const response = await request<{ items: { id: { channelId: string } }[]; nextPageToken?: string }>('search', { part: 'snippet', type: 'channel', q: term, maxResults: '12', ...(pageToken ? { pageToken } : {}) }, signal);
   const channels = (await channelDetails(response.items.map(c => c.id.channelId), signal)).filter(c => isPreferredRegion(c.country));
-  return { channels: await englishChannels(channels, signal), nextPageToken: response.nextPageToken };
+  return { channels: await channelsInLanguage(channels, signal), nextPageToken: response.nextPageToken };
 }
 const MAX_SUBSCRIPTIONS = 1000;
 interface BrandedChannelItem extends ChannelItem { brandingSettings?: { channel?: { keywords?: string } } }
