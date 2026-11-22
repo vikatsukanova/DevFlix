@@ -10,6 +10,7 @@ Requires Node.js 20.19+ or 22.12+.
 npm install
 cp .env.example .env.local
 # Set VITE_YT_API_KEY in .env.local
+# Optional: set VITE_GOOGLE_CLIENT_ID to enable Import from YouTube
 npm run dev
 ```
 
@@ -64,6 +65,22 @@ Completing setup saves topics in `devflix-preferences-v1` and selected creators 
 
 Edit interests on the For you page reopens setup with existing topics and follows selected, including creators outside the starter directory. Returning visits skip setup. Preferences are local to this browser and synchronize between tabs; unavailable storage falls back to the current session. Personalization is explicit topic matching and channel follows, not inferred watch-history recommendations.
 
+## Import from YouTube
+
+Importing your YouTube subscriptions is optional. It needs `VITE_GOOGLE_CLIENT_ID` in `.env.local` in addition to the existing `VITE_YT_API_KEY`. Without the client ID, or in preview mode, the import panel is hidden and creators can still be chosen manually.
+
+Google Cloud setup:
+
+1. Configure the **OAuth consent screen**. While the app is in *Testing*, add your own Google account as a test user.
+2. Create an OAuth client ID of type **Web application**. Add `http://localhost:5173` and your production origin to **Authorized JavaScript origins**.
+3. Enable **YouTube Data API v3** in the same project.
+
+The only scope requested is `youtube.readonly`. The access token is held in memory for a single import and is revoked as soon as the subscriptions have been read. Nothing is written to YouTube. DevFlix does not store the token or the full subscription list; only the channels you keep selected are saved as follows.
+
+Each import reads up to 1000 subscriptions. Quota cost is about 1 unit per 50 subscriptions for each of `subscriptions.list` and `channels.list`.
+
+Classification is keyword-based. It checks each channel's title, description and channel keywords for AI and dev terms. Curated channels always match. Keyword matching can miss relevant channels or include unrelated ones, so matches arrive pre-selected for review and deselecting any of them is expected. The remaining subscriptions stay unselected behind **Show N other subscriptions** and can be picked individually.
+
 ## Validation status
 
-Production build and TypeScript checks pass. All 13 automated tests pass, covering onboarding completion, skip/cancel, returning visits, edit/search selection preservation, personalized homepage content, local video storage, query identities, channel follow/unfollow persistence, category filtering, feed merging and ordering, and the Channels-to-Following interaction. Live API and visual browser verification are not part of these automated tests. The local dev server could not be started in the execution environment because opening port 5173 was denied (EPERM).
+Production build and TypeScript checks pass. All 22 automated tests pass, covering onboarding completion, skip/cancel, returning visits, edit/search selection preservation, personalized homepage content, YouTube import classification, pre-selection, error retry and the hidden-when-unconfigured state, local video storage, query identities, channel follow/unfollow persistence, category filtering, feed merging and ordering, and the Channels-to-Following interaction. Live API and visual browser verification are not part of these automated tests. The local dev server could not be started in the execution environment because opening port 5173 was denied (EPERM).
