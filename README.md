@@ -26,17 +26,36 @@ npm test
 
 ## Catalog
 
-Home and Discover rows are live topic feeds, one per topic: AI & Agents, Frontend, Backend, System Design and DevOps. Each row is a YouTube search for embeddable videos published in the last 30 days, ordered by view count. Edit the queries and subtitles in `src/topics.ts` to change what a row finds. Every topic row is a `search.list` call, which costs 100 quota units, so the number of topics drives the cost of a fresh home page.
+**For you** opens with a creator strip: one avatar button per followed channel, each with a one-line tagline, labeled `Show videos from <name>`. Selecting a creator filters the feed and shows a profile card beneath the strip with the handle, subscriber and video counts, join year, a short bio and an Open on YouTube link. **Find more** opens the Channels tab.
 
-Rows load only when they scroll near the viewport (`IntersectionObserver` with a 150px margin), so offscreen topics spend no quota until approached. Results are cached for one hour and persisted for up to 24 hours. Without an API key, each row shows a rotated sample of the preview catalog, clearly labeled as preview.
+Under the strip, home has a single **New from your channels** row of the newest public uploads from followed channels (`playlistItems.list`, 1 unit per channel). It becomes **New from <name>** when one creator is selected. Four topic rows follow, built in `src/homeRows.ts` from your selected interests:
+
+| Row | What it shows | Quota per load |
+| --- | --- | --- |
+| Hot this week | Most-viewed embeddable videos from the last 7 days | 100 units (1 `search.list`) |
+| Deep dives | Relevance-ranked tutorials and courses from the last year, 20 minutes or longer | 100 units (1 `search.list`) |
+| Quick explainers | Most-viewed videos from the last 90 days, filtered to 4 to 20 minutes, then trimmed to 10 minutes using real durations | 100 units, plus 1 unit (`videos.list`) for durations |
+| Rising creators | Videos from the last 30 days by channels with 1K to 250K subscribers, ranked by views per subscriber, one video per channel | 100 units, plus 2 units (`videos.list` and `channels.list`) |
+
+With no interests selected, the four rows cover every topic. Each row loads only when it scrolls near the viewport. The For you hero features the top **Hot this week** video.
+
+**Discover** keeps one **Trending in <topic>** row per topic (AI & Agents, Frontend, Backend, System Design and DevOps). Each is a `search.list` for embeddable videos from the last 30 days, ordered by view count, at 100 units per row. Edit the queries and subtitles in `src/topics.ts` to change what those rows find.
+
+Rows load only when they scroll near the viewport (`IntersectionObserver` with a 150px margin), so offscreen rows spend no quota until approached. Results are cached for one hour and persisted for up to 24 hours. Without an API key, each row shows a rotated sample of the preview catalog, clearly labeled as preview.
+
+**Cards** show the channel's subscriber count (for example "3.9M subs") and the video's views and age ("1.2M views · 2d ago"). When those stats are unavailable, the card reads "Free lesson". Stats come from `videos.list` (statistics) and `channels.list` (subscribers), fetched once per row, about 2 units per row.
+
+**Player.** When a video has a channel, the modal shows an **About the creator** panel with the name, tagline, subscriber and video counts, year joined, bio and a link to the channel.
+
+**Creator data.** Names, descriptions, subscriber and video counts, join dates and avatars come from YouTube's `channels.list`. Bios prefer Wikipedia. DevFlix finds the Wikidata item whose **YouTube channel ID** property (P2397) equals the channel's ID, then loads that item's English Wikipedia summary. The match is exact, so a creator never gets someone else's biography. Wikidata and Wikipedia are free and need no key. Many creators have no Wikipedia page, so the panel falls back to the channel's own description. The short tagline uses Wikidata's description when one exists, otherwise the first sentence of the channel description. In preview mode the creator strip uses the curated channels and their descriptions, and the stats and Wikipedia lookups are off.
 
 ## Cache and YouTube quota
 
-- All API requests run through TanStack Query. `queryKeys.ts` separates trending, channel-upload, detail and normalized search caches. The hero and the first trending row share a query key, and onboarding reuses the same trending queries to suggest creators, so concurrent consumers deduplicate requests.
+- All API requests run through TanStack Query. `queryKeys.ts` separates trending, channel-upload, detail and normalized search caches. The For you hero and the Hot this week row share a query key, and onboarding reuses the same trending queries to suggest creators, so concurrent consumers deduplicate requests.
 - **One-hour stale time** means revisiting a row, reopening a modal, or repeating a search normally reuses fresh data without another request. Window focus refetching is disabled.
 - **24-hour garbage collection and persisted-cache maximum age** preserve useful data across reloads without retaining it indefinitely. `PersistQueryClientProvider` waits for hydration before queries fetch. A demo/live cache buster prevents preview records contaminating the live catalog. The sync-storage persister throttles writes to one second.
-- Trending and channel rows each have their own query, skeleton and retry UI. `IntersectionObserver` enables a row once it enters a 150px viewport margin; offscreen rows spend no quota until approached.
-- Trending rows use `search.list` (100 units each); followed-channel rows use `playlistItems.list` (1 unit per channel, 20 uploads). `videos.list` fetches full descriptions, durations and embeddability on card hover/focus, using the exact query later consumed by the modal. Fast clicks show the existing summary immediately while details load. Prefetching can consume quota for unwatched videos, but the fresh detail cache deduplicates repeat hovers.
+- Home rows, Discover trending rows and channel rows each have their own query, skeleton and retry UI. `IntersectionObserver` enables a row once it enters a 150px viewport margin; offscreen rows spend no quota until approached.
+- Search-based rows (the four home rows and each Discover topic) use `search.list` at 100 units per call. New from your channels uses `playlistItems.list` (1 unit per channel, 20 uploads), and creator profiles use `channels.list` (1 unit per 50 channels). `videos.list` fetches full descriptions, durations and embeddability on card hover/focus, using the exact query later consumed by the modal. Fast clicks show the existing summary immediately while details load. Prefetching can consume quota for unwatched videos, but the fresh detail cache deduplicates repeat hovers.
 - Search is **submit-only**, not per keystroke. `useInfiniteQuery` follows `nextPageToken`, requests 20 results at a time, and retains up to 10 pages. The sentinel loads more at the bottom; failed pages require explicit retry. Search requests have historically been considerably more expensive than playlist/detail requests; check current Google quota rules for your project.
 - Client errors (including invalid keys and exhausted quota) do not retry automatically. Transient server/network failures retry once. Abort signals cancel obsolete requests.
 - Cache persistence is best effort if browser storage is unavailable/full. My List and Continue Watching use separate, validated localStorage records, with a session-only fallback and cross-tab synchronization. They are not accounts or cloud sync.
@@ -68,10 +87,11 @@ On first visit, a skippable two-step setup lets learners choose topics and creat
 Completing setup saves topics in `devflix-preferences-v1` and selected creators in the existing following store. The For you page is ordered as follows:
 
 1. **Continue Watching** and **My List**, when they have items.
-2. **`<Topic>` from your channels** rows. Uploads from followed channels are grouped by the topic found in each video's title and description. When a video matches no topic, its channel's topics are used. Uploads that match neither go to **More from your channels**. Each row shows up to 20 videos.
-3. **Trending in your interests**, with one trending row per selected topic. With no topics selected, the heading reads **Trending this month** and rows cover every topic.
+2. The creator strip and, when one is selected, its profile card.
+3. **New from your channels** (or **New from <name>**), one row of up to 30 uploads from followed channels.
+4. The four topic rows: **Hot this week**, **Deep dives**, **Quick explainers** and **Rising creators**. See Catalog for what each one shows and what it costs.
 
-Discover shows every topic, and explicit topic filters can explore outside selected interests. The For you hero features the first shown topic. Preview mode fills the followed-channel rows with the sample videos of the followed starter channels.
+Discover shows every topic, and explicit topic filters can explore outside selected interests. Discover keeps its per-topic **Trending in <topic>** rows. Preview mode fills the followed-channel row with the sample videos of the followed starter channels.
 
 Edit interests on the For you page reopens setup with existing topics and follows selected, including creators outside the suggestions. Returning visits skip setup. Preferences are local to this browser and synchronize between tabs; unavailable storage falls back to the current session. Personalization is explicit topic matching and channel follows, not inferred watch-history recommendations.
 
@@ -95,4 +115,4 @@ Classification is keyword-based first. It checks each channel's title, descripti
 
 ## Validation status
 
-Production build and TypeScript checks pass. All 31 automated tests pass, covering onboarding completion, skip/cancel, returning visits, edit/search selection preservation, personalized For you and Discover rows, YouTube import classification, the upload-title pass, pre-selection, error retry and the hidden-when-unconfigured state, stored subscription IDs and the Subscribed badge, topic-split rows for followed channels, local video storage, query identities, channel follow/unfollow persistence, category filtering, feed merging and ordering, and the Channels-to-Following interaction. Live API and visual browser verification are not part of these automated tests. The local dev server could not be started in the execution environment because opening port 5173 was denied (EPERM).
+Production build and TypeScript checks pass. All 48 automated tests pass. The suite covers onboarding completion, skip/cancel, returning visits, edit/search selection preservation, personalized For you and Discover rows, the single New from your channels row and creator filtering, YouTube import classification, the upload-title pass, pre-selection, error retry and the hidden-when-unconfigured state, stored subscription IDs and the Subscribed badge, home row ranking and duration filtering, creator profiles, Wikipedia matching through Wikidata, formatting helpers, local video storage, query identities, channel follow/unfollow persistence, category filtering, feed merging and ordering, and the Channels-to-Following interaction. Live API and visual browser verification are not part of these automated tests. The local dev server could not be started in the execution environment because opening port 5173 was denied (EPERM).

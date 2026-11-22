@@ -33,10 +33,10 @@ it('completes onboarding and personalizes the homepage, while keeping Discover a
   fireEvent.click(screen.getByRole('button', { name: 'Build my homepage' }));
   expect(readPreferences(localStorage.getItem(preferenceKey))).toEqual({ completed: true, interests: ['Frontend'] });
   expect(readFollowing(localStorage.getItem('devflix-following-v1'))[0].title).toBe('Fireship');
-  expect(screen.getByRole('heading', { name: 'Trending in your interests' })).toBeTruthy();
-  expect(screen.getByRole('heading', { name: 'From your channels' })).toBeTruthy();
-  expect(screen.getByRole('heading', { name: 'Trending in Frontend' })).toBeTruthy();
-  expect(screen.queryByRole('heading', { name: 'Trending in Backend' })).toBeNull();
+  expect(screen.getByRole('heading', { name: 'New from your channels' })).toBeTruthy();
+  expect(screen.getByRole('heading', { name: 'Hot this week' })).toBeTruthy();
+  expect(screen.getByRole('heading', { name: 'Quick explainers' })).toBeTruthy();
+  expect(screen.queryByRole('heading', { name: 'Trending in Frontend' })).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: /^Discover$/ }));
   expect(screen.getByRole('heading', { name: 'Trending in Backend' })).toBeTruthy();
   expect(screen.getByRole('heading', { name: 'Trending in Frontend' })).toBeTruthy();

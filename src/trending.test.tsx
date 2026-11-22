@@ -116,15 +116,31 @@ describe('stored subscription IDs', () => {
 });
 
 describe('For you rows from followed channels', () => {
-  it('groups a followed channel\'s demo upload under its topic row', () => {
+  it('shows a followed channel\'s demo upload in the single "New from your channels" row', () => {
     vi.stubGlobal('IntersectionObserver', AlwaysVisible);
     savePreferences(['Frontend']);
     setFollowing([curatedChannels[0]]);
     wrapper(<App/>);
 
-    const row = screen.getByRole('heading', { name: 'Frontend from your channels' }).closest('section');
+    const row = screen.getByRole('heading', { name: 'New from your channels' }).closest('section');
     expect(row).not.toBeNull();
     expect(within(row!).getByRole('heading', { name: 'React in 100 Seconds' })).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: 'Frontend from your channels' })).toBeNull();
     expect(screen.queryByRole('heading', { name: 'More from your channels' })).toBeNull();
+  });
+
+  it('narrows the row to one creator when their avatar is selected', () => {
+    vi.stubGlobal('IntersectionObserver', AlwaysVisible);
+    savePreferences(['Frontend']);
+    setFollowing([curatedChannels[0]]);
+    wrapper(<App/>);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show videos from Fireship' }));
+
+    expect(screen.getByRole('button', { name: 'Show videos from Fireship' }).getAttribute('aria-pressed')).toBe('true');
+    const row = screen.getByRole('heading', { name: 'New from Fireship' }).closest('section');
+    expect(row).not.toBeNull();
+    expect(within(row!).getByRole('heading', { name: 'React in 100 Seconds' })).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: 'New from your channels' })).toBeNull();
   });
 });
