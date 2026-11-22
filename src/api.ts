@@ -50,16 +50,26 @@ export function isEnglishVideo(video: Pick<Video, 'title'>, language?: VideoLang
   if (language?.metadata && !isEnglishCode(language.metadata)) return false;
   return nonLatinShare(video.title) < 0.3;
 }
-/** Removes non-English videos. Search's relevanceLanguage only biases results, so this checks each video (1 quota unit per 50). */
+/**
+ * YouTube categories that are never shown: Film & Animation, Autos, Music, Pets, Sports, Travel, Gaming, Comedy,
+ * News & Politics, Shows and Trailers. Science & Technology, Education, Howto, People & Blogs and Entertainment stay,
+ * because developers upload under all of them.
+ */
+export const BLOCKED_CATEGORIES = new Set(['1', '2', '10', '15', '17', '19', '20', '23', '25', '43', '44']);
+/**
+ * Removes non-English videos and videos in blocked categories. Search's relevanceLanguage only biases results,
+ * so this checks each video's snippet (1 quota unit per 50, language and category in the same call).
+ */
 export async function englishOnly(videos: Video[], signal?: AbortSignal): Promise<Video[]> {
   if (!videos.length) return videos;
   const languages: Record<string, VideoLanguage> = {};
+  const categories: Record<string, string | undefined> = {};
   const ids = [...new Set(videos.map(v => v.id))];
   for (let i = 0; i < ids.length; i += 50) {
-    const data = await request<{ items: { id: string; snippet?: { defaultAudioLanguage?: string; defaultLanguage?: string } }[] }>('videos', { part: 'snippet', id: ids.slice(i, i + 50).join(','), maxResults: '50' }, signal);
-    for (const item of data.items) languages[item.id] = { audio: item.snippet?.defaultAudioLanguage, metadata: item.snippet?.defaultLanguage };
+    const data = await request<{ items: { id: string; snippet?: { defaultAudioLanguage?: string; defaultLanguage?: string; categoryId?: string } }[] }>('videos', { part: 'snippet', id: ids.slice(i, i + 50).join(','), maxResults: '50' }, signal);
+    for (const item of data.items) { languages[item.id] = { audio: item.snippet?.defaultAudioLanguage, metadata: item.snippet?.defaultLanguage }; categories[item.id] = item.snippet?.categoryId; }
   }
-  return videos.filter(v => isEnglishVideo(v, languages[v.id]));
+  return videos.filter(v => isEnglishVideo(v, languages[v.id]) && !BLOCKED_CATEGORIES.has(categories[v.id] ?? ''));
 }
 export const DAY = 24 * 60 * 60 * 1000;
 /** ISO date `days` ago, rounded to the day so cached query results stay stable. */

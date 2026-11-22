@@ -2,7 +2,7 @@ import { daysAgo, demoVideos, durationSeconds, isDemo, searchVideos, videoStats,
 import { channelProfiles } from './creators';
 import type { Topic } from './classify';
 import { topicFeeds, maxAgeDays, FAST_MOVING_DAYS } from './topics';
-import { topicsForText } from './classify';
+import { isClickbait, isDevRelated, isOffTopic, topicsForText } from './classify';
 import { isPreferredRegion } from './region';
 
 export type HomeRowId = 'hot' | 'deep' | 'quick' | 'rising';
@@ -10,7 +10,7 @@ export const homeRows: { id: HomeRowId; title: string; subtitle: string }[] = [
   { id: 'hot', title: 'Hot this week', subtitle: 'Taking off this week: 10K+ views, fastest-growing first.' },
   { id: 'deep', title: 'Deep dives', subtitle: 'Long tutorials and courses. AI picks are from the last 45 days.' },
   { id: 'quick', title: 'Quick explainers', subtitle: 'Learn something in under 10 minutes.' },
-  { id: 'rising', title: 'Rising creators', subtitle: 'Smaller channels whose new videos are taking off.' },
+  { id: 'rising', title: 'Rising creators', subtitle: 'Smaller channels with a dev video taking off this week.' },
 ];
 
 /** One search across several topics using YouTube's OR operator, e.g. "AI agents | system design". */
@@ -53,6 +53,9 @@ function onePerChannel(videos: Video[]): Video[] {
 export const HOT_MIN_VIEWS = 10_000;
 /** Deep dives and Quick explainers: skip videos almost nobody has watched. */
 export const MIN_VIEWS = 5_000;
+/** Rising creators: a minimum audience and length, so tiny or throwaway uploads don't qualify. */
+export const RISING_MIN_VIEWS = 10_000;
+const RISING_MIN_SECONDS = 300;
 /** Shorts (under 3 minutes) aren't lessons, even when they go viral. */
 const MIN_HOT_SECONDS = 180;
 /** Keeps videos with HOT_MIN_VIEWS+ views that aren't Shorts, fastest-growing (views per day since upload) first. */
@@ -87,6 +90,8 @@ export function interleave(lists: Video[][]): Video[] {
   for (let i = 0; i < Math.max(0, ...lists.map(l => l.length)); i++) for (const list of lists) if (list[i] && !out.some(v => v.id === list[i].id)) out.push(list[i]);
   return out;
 }
+/** Discovery rows only show videos about dev or AI, and never politics, news or games. */
+export const isOnTopic = (v: Video) => isDevRelated(`${v.title}\n${v.description}`) && !isOffTopic(v.title);
 const ROW_LIMIT: Record<HomeRowId, number> = { hot: 25, deep: 25, quick: 25, rising: 20 };
 /** Keeps videos from creators in the preferred regions or with no listed country (1 unit per 50 channels). See region.ts. */
 export async function preferredRegionOnly(videos: Video[], signal?: AbortSignal): Promise<Video[]> {
@@ -97,7 +102,8 @@ export async function preferredRegionOnly(videos: Video[], signal?: AbortSignal)
 }
 export async function fetchHomeRow(id: HomeRowId, topics: Topic[], signal?: AbortSignal): Promise<Video[]> {
   if (isDemo) { const shift = homeRows.findIndex(r => r.id === id) + 1; return [...demoVideos.slice(shift), ...demoVideos.slice(0, shift)]; }
-  return (await preferredRegionOnly(await rowCandidates(id, topics, signal), signal)).slice(0, ROW_LIMIT[id]);
+  const relevant = (await rowCandidates(id, topics, signal)).filter(isOnTopic);
+  return (await preferredRegionOnly(relevant, signal)).slice(0, ROW_LIMIT[id]);
 }
 async function rowCandidates(id: HomeRowId, topics: Topic[], signal?: AbortSignal): Promise<Video[]> {
   const q = topicsQuery(topics);
@@ -126,7 +132,10 @@ async function rowCandidates(id: HomeRowId, topics: Topic[], signal?: AbortSigna
       const scored = videos.flatMap(v => {
         const subs = v.channelId ? profiles[v.channelId]?.subscribers : undefined;
         const views = stats[v.id]?.views;
-        return subs && views && subs >= 1_000 && subs <= 250_000 ? [{ v, score: views / subs }] : [];
+        const seconds = durationSeconds(stats[v.id]?.duration) ?? 0;
+        // Small channels only, but with real traction, real length and no hype-style titles.
+        const qualifies = subs && views && subs >= 1_000 && subs <= 250_000 && views >= RISING_MIN_VIEWS && seconds >= RISING_MIN_SECONDS && !isClickbait(v.title);
+        return qualifies ? [{ v, score: views / subs }] : [];
       });
       return onePerChannel(scored.sort((a, b) => b.score - a.score).map(s => s.v));
     }

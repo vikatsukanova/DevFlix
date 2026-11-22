@@ -33,3 +33,19 @@ export function classifyByTitles(id: string, titles: string[]): Classification {
   const dev = hits >= Math.max(2, Math.ceil(titles.length * 0.3));
   return { id, dev, topics: dev ? [...counts].filter(([, n]) => n >= 2).map(([t]) => t) : [], source: dev ? 'uploads' : 'none' };
 }
+/** True when a title or description is about software development or AI. */
+export function isDevRelated(text: string): boolean {
+  return topicsForText(text).length > 0 || generalDev.test(text);
+}
+/** Politics, news, games and entertainment that slip in through broad searches (e.g. "AI" in a GTA 6 video). */
+const offTopic = /\b(news(?! ?feeds?)|breaking news|politics?|political|election|elections|president|congress|senate|parliament|democrats?|republicans?|trump|biden|tariffs?|war|ukraine|russia|israel|gaza|iran|gta ?(vi|v|6|5)?|grand theft auto|fortnite|minecraft|roblox|call of duty|valorant|playstation|ps5|xbox|nintendo|gameplay|walkthrough|let'?s play|trailer|movie|box office|celebrity|nfl|nba|world cup)\b/i;
+export function isOffTopic(title: string): boolean {
+  return offTopic.test(title);
+}
+/** Hype-style titles: money promises, "is dead", shock words, shouting or emoji walls. */
+const clickbaitWords = /\b(you won'?t believe|shocking|insane|is (dead|over)|destroyed|exposed|gone wrong|100% free|for free forever|passive income|get rich|make \$\d+k?|\$\d+k?\s*\/\s*(day|month|week)|secret (trick|hack)|nobody (is talking|tells you))\b/i;
+export function isClickbait(title: string): boolean {
+  const shouting = (title.match(/\b[A-Z]{4,}\b/g) ?? []).filter(w => !/^(HTML|JSON|REST|HTTP|AWS|GCP|SQL|LLMS?|CRUD|OAUTH|NGINX)$/.test(w)).length;
+  const emoji = (title.match(/\p{Extended_Pictographic}/gu) ?? []).length;
+  return clickbaitWords.test(title) || shouting >= 2 || emoji >= 2;
+}

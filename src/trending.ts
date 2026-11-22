@@ -5,6 +5,7 @@ import { channelDetails, channelUploads, englishChannels, mergeFeed } from './ch
 import { curatedChannels, type Channel } from './channels';
 import type { Topic } from './classify';
 import { isPreferredRegion } from './region';
+import { isOnTopic } from './homeRows';
 import { useFollowing } from './channelStore';
 import { queryKeys } from './queryKeys';
 import { topicFeeds } from './topics';
@@ -24,7 +25,7 @@ export function useTrendingCreators(topics: Topic[], enabled: boolean) {
   const feeds = useQueries({ queries: topics.map(t => trendingOptions(t, enabled && !isDemo)) });
   const seen = new Map<string, { count: number; topics: Set<Topic> }>();
   feeds.forEach((feed, i) => feed.data?.forEach(video => {
-    if (!video.channelId) return;
+    if (!video.channelId || !isOnTopic(video)) return;
     const entry = seen.get(video.channelId) ?? { count: 0, topics: new Set<Topic>() };
     entry.count += 1;
     entry.topics.add(topics[i]);
