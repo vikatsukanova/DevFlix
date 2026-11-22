@@ -1,4 +1,36 @@
-import { request, playlist, ApiError, type Video } from './api';
+import { request, playlist, ApiError, isEnglishVideo, type Video, type VideoLanguage } from './api';
+const SAMPLE = 5;
+const channelLanguage = new Map<string, boolean>();
+/** A channel counts as English when most of its latest uploads are (same rules as `isEnglishVideo`). */
+export function isEnglishChannel(samples: { title: string; language?: VideoLanguage }[]): boolean {
+  if (!samples.length) return true;
+  return samples.filter(s => isEnglishVideo(s, s.language)).length / samples.length >= 0.6;
+}
+/**
+ * Drops channels that mostly publish in other languages, judged from their latest uploads' spoken language.
+ * Channel-level language fields are usually empty, so this samples 5 uploads per channel:
+ * 1 unit per channel plus 1 per 50 videos, remembered for the session.
+ */
+export async function englishChannels(channels: Channel[], signal?: AbortSignal): Promise<Channel[]> {
+  const unknown = channels.filter(c => c.uploadsId && !channelLanguage.has(c.id));
+  const uploads = await Promise.all(unknown.map(async c => {
+    try {
+      const page = await request<{ items: { snippet: { title: string; resourceId?: { videoId: string } } }[] }>('playlistItems', { part: 'snippet', playlistId: c.uploadsId!, maxResults: String(SAMPLE) }, signal);
+      return { channel: c, videos: page.items.flatMap(i => i.snippet.resourceId ? [{ id: i.snippet.resourceId.videoId, title: i.snippet.title }] : []) };
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 404) return { channel: c, videos: [] };
+      throw error;
+    }
+  }));
+  const ids = uploads.flatMap(u => u.videos.map(v => v.id));
+  const languages: Record<string, VideoLanguage> = {};
+  for (let i = 0; i < ids.length; i += 50) {
+    const data = await request<{ items: { id: string; snippet?: { defaultAudioLanguage?: string; defaultLanguage?: string } }[] }>('videos', { part: 'snippet', id: ids.slice(i, i + 50).join(','), maxResults: '50' }, signal);
+    for (const item of data.items) languages[item.id] = { audio: item.snippet?.defaultAudioLanguage, metadata: item.snippet?.defaultLanguage };
+  }
+  for (const { channel, videos } of uploads) channelLanguage.set(channel.id, isEnglishChannel(videos.map(v => ({ title: v.title, language: languages[v.id] }))));
+  return channels.filter(c => channelLanguage.get(c.id) !== false);
+}
 import { type Channel } from './channels';
 interface ChannelItem { id: string; snippet: { title: string; description: string; thumbnails?: { medium?: { url: string } } }; contentDetails?: { relatedPlaylists: { uploads: string } } }
 export async function channelDetails(ids: string[], signal?: AbortSignal): Promise<Channel[]> {
@@ -8,7 +40,7 @@ export async function channelDetails(ids: string[], signal?: AbortSignal): Promi
 }
 export async function searchChannels(term: string, pageToken: string, signal?: AbortSignal) {
   const response = await request<{ items: { id: { channelId: string } }[]; nextPageToken?: string }>('search', { part: 'snippet', type: 'channel', q: term, maxResults: '12', ...(pageToken ? { pageToken } : {}) }, signal);
-  return { channels: await channelDetails(response.items.map(c => c.id.channelId), signal), nextPageToken: response.nextPageToken };
+  return { channels: await englishChannels(await channelDetails(response.items.map(c => c.id.channelId), signal), signal), nextPageToken: response.nextPageToken };
 }
 const MAX_SUBSCRIPTIONS = 1000;
 interface BrandedChannelItem extends ChannelItem { brandingSettings?: { channel?: { keywords?: string } } }

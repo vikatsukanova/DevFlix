@@ -24,7 +24,7 @@ export function normalize(item: Item): Video {
 }
 export async function playlist(id: string, signal?: AbortSignal): Promise<Video[]> {
   const data = await request<{ items: Item[] }>('playlistItems', { part: 'snippet,contentDetails', playlistId: id, maxResults: '20' }, signal);
-  return data.items.filter(i => i.snippet.resourceId?.videoId && !['Private video', 'Deleted video'].includes(i.snippet.title)).map(normalize);
+  return englishOnly(data.items.filter(i => i.snippet.resourceId?.videoId && !['Private video', 'Deleted video'].includes(i.snippet.title)).map(normalize), signal);
 }
 export const videoOptions = (id: string) => queryOptions({ queryKey: queryKeys.video(id), queryFn: async ({ signal }) => {
   const data = await request<{ items: Item[] }>('videos', { part: 'snippet,contentDetails,status', id }, signal);
@@ -33,7 +33,33 @@ export const videoOptions = (id: string) => queryOptions({ queryKey: queryKeys.v
 } });
 export async function search(term: string, pageToken: string, signal?: AbortSignal) {
   const data = await request<{ items: Item[]; nextPageToken?: string }>('search', { part: 'snippet', type: 'video', videoEmbeddable: 'true', q: term, maxResults: '20', ...(pageToken ? { pageToken } : {}) }, signal);
-  return { videos: data.items.map(normalize), nextPageToken: data.nextPageToken };
+  return { videos: await englishOnly(data.items.map(normalize), signal), nextPageToken: data.nextPageToken };
+}
+export interface VideoLanguage { audio?: string; metadata?: string }
+// Regional English audio tags that are frequently applied to mixed-language audio, so they aren't treated as English.
+const NON_ENGLISH_VARIANTS = ['en-in'];
+const isEnglishCode = (code: string) => /^en(-|$)/i.test(code) && !NON_ENGLISH_VARIANTS.includes(code.toLowerCase());
+/** Share of letters outside the Latin script (e.g. Devanagari, Cyrillic, CJK). */
+const nonLatinShare = (text: string) => { const letters = text.match(/\p{L}/gu) ?? []; return letters.length ? letters.filter(c => !/\p{Script=Latin}/u.test(c)).length / letters.length : 0; };
+/**
+ * Decides from YouTube's language fields. The spoken (audio) language wins, so an English title over non-English audio is dropped.
+ * Without an audio language, a non-English metadata language or a mostly non-Latin title drops it; otherwise it's kept.
+ */
+export function isEnglishVideo(video: Pick<Video, 'title'>, language?: VideoLanguage): boolean {
+  if (language?.audio) return isEnglishCode(language.audio);
+  if (language?.metadata && !isEnglishCode(language.metadata)) return false;
+  return nonLatinShare(video.title) < 0.3;
+}
+/** Removes non-English videos. Search's relevanceLanguage only biases results, so this checks each video (1 quota unit per 50). */
+export async function englishOnly(videos: Video[], signal?: AbortSignal): Promise<Video[]> {
+  if (!videos.length) return videos;
+  const languages: Record<string, VideoLanguage> = {};
+  const ids = [...new Set(videos.map(v => v.id))];
+  for (let i = 0; i < ids.length; i += 50) {
+    const data = await request<{ items: { id: string; snippet?: { defaultAudioLanguage?: string; defaultLanguage?: string } }[] }>('videos', { part: 'snippet', id: ids.slice(i, i + 50).join(','), maxResults: '50' }, signal);
+    for (const item of data.items) languages[item.id] = { audio: item.snippet?.defaultAudioLanguage, metadata: item.snippet?.defaultLanguage };
+  }
+  return videos.filter(v => isEnglishVideo(v, languages[v.id]));
 }
 export const DAY = 24 * 60 * 60 * 1000;
 /** ISO date `days` ago, rounded to the day so cached query results stay stable. */
@@ -42,7 +68,7 @@ export interface VideoSearch { q: string; order: 'viewCount' | 'relevance' | 'da
 /** search.list for embeddable English videos (100 quota units per call). */
 export async function searchVideos({ q, order, publishedAfter, videoDuration, maxResults = 25 }: VideoSearch, signal?: AbortSignal): Promise<Video[]> {
   const data = await request<{ items: Item[] }>('search', { part: 'snippet', type: 'video', videoEmbeddable: 'true', q, order, relevanceLanguage: 'en', maxResults: String(maxResults), ...(publishedAfter ? { publishedAfter } : {}), ...(videoDuration ? { videoDuration } : {}) }, signal);
-  return data.items.map(normalize);
+  return englishOnly(data.items.map(normalize), signal);
 }
 /** Most-viewed embeddable videos for a topic from the last 30 days. */
 export const trending = (query: string, signal?: AbortSignal) => searchVideos({ q: query, order: 'viewCount', publishedAfter: daysAgo(30) }, signal);

@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useQueries, useQuery } from '@tanstack/react-query';
 import { demoVideos, isDemo, trending, type Video } from './api';
-import { channelDetails, channelUploads, mergeFeed } from './channelApi';
+import { channelDetails, channelUploads, englishChannels, mergeFeed } from './channelApi';
 import { curatedChannels, type Channel } from './channels';
 import type { Topic } from './classify';
 import { useFollowing } from './channelStore';
@@ -31,7 +31,7 @@ export function useTrendingCreators(topics: Topic[], enabled: boolean) {
   }));
   const ids = [...seen].sort((a, b) => b[1].count - a[1].count).slice(0, 48).map(([id]) => id);
   const feedsDone = feeds.every(f => !f.isPending);
-  const details = useQuery({ queryKey: queryKeys.trendingCreators(ids), queryFn: ({ signal }) => channelDetails(ids, signal), enabled: enabled && !isDemo && feedsDone && ids.length > 0 });
+  const details = useQuery({ queryKey: queryKeys.trendingCreators(ids), queryFn: async ({ signal }) => englishChannels(await channelDetails(ids, signal), signal), enabled: enabled && !isDemo && feedsDone && ids.length > 0 });
   const creators: Channel[] = isDemo
     ? curatedChannels.filter(c => !topics.length || c.topics.some(t => topics.includes(t as Topic)))
     : ids.flatMap(id => { const c = details.data?.find(d => d.id === id); return c ? [{ ...c, topics: [...seen.get(id)!.topics] }] : []; });
