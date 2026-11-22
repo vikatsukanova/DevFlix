@@ -3,7 +3,7 @@ import { useQueries, useQuery } from '@tanstack/react-query';
 import { demoVideos, isDemo, trending, type Video } from './api';
 import { channelDetails, channelUploads, mergeFeed } from './channelApi';
 import { curatedChannels, type Channel } from './channels';
-import { topicsForText, type Topic } from './classify';
+import type { Topic } from './classify';
 import { useFollowing } from './channelStore';
 import { queryKeys } from './queryKeys';
 import { topicFeeds } from './topics';
@@ -43,22 +43,14 @@ export function useTrendingCreators(topics: Topic[], enabled: boolean) {
   };
 }
 
-/** Uploads from followed channels, grouped by topic from each video's title/description, falling back to the channel's topics. */
+/** Newest uploads from followed channels, merged into one feed. */
 export function useFollowedFeed(enabled: boolean) {
   const following = useFollowing();
   const feeds = useQueries({ queries: following.map(channel => ({ queryKey: queryKeys.channelUploads(channel.id), queryFn: ({ signal }: { signal: AbortSignal }) => channelUploads(channel, signal), enabled: enabled && !isDemo })) });
   const videos: Video[] = isDemo ? demoVideos.filter(v => following.some(c => c.title === v.channel)) : mergeFeed(feeds.map(f => f.data ?? []));
-  const byTopic = new Map<Topic | 'Other', Video[]>();
-  for (const video of videos) {
-    const channel = following.find(c => c.id === video.channelId || c.title === video.channel);
-    const fromText = topicsForText(`${video.title}\n${video.description}`);
-    const topics = fromText.length ? fromText : (channel?.topics.filter((t): t is Topic => t !== 'All topics') ?? []);
-    for (const topic of topics.length ? topics : ['Other' as const]) byTopic.set(topic, [...(byTopic.get(topic) ?? []), video]);
-  }
   return {
     following,
     videos,
-    byTopic,
     isPending: !isDemo && feeds.some(f => f.isPending),
     errors: feeds.flatMap((f, i) => f.isError ? [{ channel: following[i], message: f.error.message, retry: () => void f.refetch() }] : []),
   };
