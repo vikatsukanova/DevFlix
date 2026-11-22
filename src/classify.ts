@@ -4,7 +4,7 @@ export const classifiableTopics = channelTopics.filter((t): t is Topic => t !== 
 export interface ChannelProfile { id: string; title: string; description: string; keywords?: string }
 export interface Classification { id: string; dev: boolean; topics: Topic[]; source: 'curated' | 'keywords' | 'uploads' | 'none' }
 const rules: [Topic, RegExp][] = [
-  ['AI & Agents', /\b(ai|a\.i\.|artificial intelligence|machine learning|deep learning|llms?|gpt|chatgpt|openai|anthropic|claude|langchain|prompt engineering|ai agents?|agentic|neural networks?|data science|computer vision|nlp)\b/i],
+  ['AI & Agents', /\b(ai|a\.i\.|genai|artificial intelligence|machine learning|deep learning|llms?|gpt[-\d.o]*|chatgpt|openai|anthropic|claude|gemini|llama|mistral|ollama|copilot|cursor (ai|ide|editor)|windsurf|codex|langchain|langgraph|llamaindex|crewai|autogen|n8n|hugging ?face|mcp|rag|embeddings?|vector (databases?|db)|fine[- ]?tun(e|ing)|prompt engineering|prompts?|agents?|agentic|vibe[- ]?coding|neural networks?|transformers?|diffusion|data science|computer vision|nlp)\b/i],
   ['Frontend', /\b(react|javascript|typescript|frontend|front-end|css|html|next\.?js|vue|svelte|angular|tailwind|web dev(elopment)?)\b/i],
   ['Backend', /\b(backend|back-end|node\.?js|databases?|sql|postgres(ql)?|golang|django|spring boot|rest apis?|distributed systems)\b/i],
   ['System Design', /\b(system design|software architecture|scalability|microservices|distributed systems)\b/i],

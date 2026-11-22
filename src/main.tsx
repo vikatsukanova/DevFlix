@@ -12,4 +12,4 @@ const client = new QueryClient({ defaultOptions: { queries: { staleTime: 60 * 60
 let storage: Storage | undefined;
 try { storage = window.localStorage; } catch { /* private mode */ }
 const persister = createSyncStoragePersister({ storage, key: 'devflix-cache-v1', throttleTime: 1000 });
-ReactDOM.createRoot(document.getElementById('root')!).render(<React.StrictMode><PersistQueryClientProvider client={client} persistOptions={{ persister, maxAge: DAY, buster: isDemo ? 'demo-v1' : 'live-v1' }}><App/><ReactQueryDevtools initialIsOpen={false}/></PersistQueryClientProvider></React.StrictMode>);
+ReactDOM.createRoot(document.getElementById('root')!).render(<React.StrictMode><PersistQueryClientProvider client={client} persistOptions={{ persister, maxAge: DAY, buster: isDemo ? 'demo-v3' : 'live-v3' }}><App/><ReactQueryDevtools initialIsOpen={false}/></PersistQueryClientProvider></React.StrictMode>);
