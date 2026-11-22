@@ -26,15 +26,17 @@ npm test
 
 ## Catalog
 
-Edit `src/rows.ts` to change rows. It includes ByteByteGo’s System Design Fundamentals, Microsoft’s AI Agents for Beginners, Fireship’s 100 Seconds of Code, Hussein Nasser’s beginner backend playlist, and Theo’s public uploads playlist. The Theo feed includes his broader developer commentary, not exclusively React. Each row loads the first 20 public playlist entries. This intentionally limits browsing requests; search supports further pages.
+Home and Discover rows are live topic feeds, one per topic: AI & Agents, Frontend, Backend, System Design and DevOps. Each row is a YouTube search for embeddable videos published in the last 30 days, ordered by view count. Edit the queries and subtitles in `src/topics.ts` to change what a row finds. Every topic row is a `search.list` call, which costs 100 quota units, so the number of topics drives the cost of a fresh home page.
+
+Rows load only when they scroll near the viewport (`IntersectionObserver` with a 150px margin), so offscreen topics spend no quota until approached. Results are cached for one hour and persisted for up to 24 hours. Without an API key, each row shows a rotated sample of the preview catalog, clearly labeled as preview.
 
 ## Cache and YouTube quota
 
-- All API requests run through TanStack Query. `queryKeys.ts` separates playlist, detail and normalized search caches. Hero and first row share a playlist key, so concurrent consumers deduplicate requests.
+- All API requests run through TanStack Query. `queryKeys.ts` separates trending, channel-upload, detail and normalized search caches. The hero and the first trending row share a query key, and onboarding reuses the same trending queries to suggest creators, so concurrent consumers deduplicate requests.
 - **One-hour stale time** means revisiting a row, reopening a modal, or repeating a search normally reuses fresh data without another request. Window focus refetching is disabled.
 - **24-hour garbage collection and persisted-cache maximum age** preserve useful data across reloads without retaining it indefinitely. `PersistQueryClientProvider` waits for hydration before queries fetch. A demo/live cache buster prevents preview records contaminating the live catalog. The sync-storage persister throttles writes to one second.
-- Playlist rows each have their own query, skeleton and retry UI. `IntersectionObserver` enables a row once it enters a 150px viewport margin; offscreen rows spend no quota until approached.
-- `playlistItems.list` fetches 20 summaries per row. `videos.list` fetches full descriptions, durations and embeddability on card hover/focus, using the exact query later consumed by the modal. Fast clicks show the existing summary immediately while details load. Prefetching can consume quota for unwatched videos, but the fresh detail cache deduplicates repeat hovers.
+- Trending and channel rows each have their own query, skeleton and retry UI. `IntersectionObserver` enables a row once it enters a 150px viewport margin; offscreen rows spend no quota until approached.
+- Trending rows use `search.list` (100 units each); followed-channel rows use `playlistItems.list` (1 unit per channel, 20 uploads). `videos.list` fetches full descriptions, durations and embeddability on card hover/focus, using the exact query later consumed by the modal. Fast clicks show the existing summary immediately while details load. Prefetching can consume quota for unwatched videos, but the fresh detail cache deduplicates repeat hovers.
 - Search is **submit-only**, not per keystroke. `useInfiniteQuery` follows `nextPageToken`, requests 20 results at a time, and retains up to 10 pages. The sentinel loads more at the bottom; failed pages require explicit retry. Search requests have historically been considerably more expensive than playlist/detail requests; check current Google quota rules for your project.
 - Client errors (including invalid keys and exhausted quota) do not retry automatically. Transient server/network failures retry once. Abort signals cancel obsolete requests.
 - Cache persistence is best effort if browser storage is unavailable/full. My List and Continue Watching use separate, validated localStorage records, with a session-only fallback and cross-tab synchronization. They are not accounts or cloud sync.
@@ -49,7 +51,9 @@ Cards support Left/Right, Home and End navigation, touch scrolling, and visible 
 
 ## Channels and Following
 
-The Channels tab provides a curated starter directory with AI & Agents, Frontend, Backend, System Design and DevOps filters. Channel search runs on submission, searches YouTube beyond the directory, and has a More channels button. Search results are not automatically classified into our curated topics.
+The Channels tab opens with trending creators: the channels behind the most-viewed recent videos in each topic, most frequent first. The AI & Agents, Frontend, Backend, System Design and DevOps filters narrow the list to one topic. These suggestions come from the same cached topic searches as the home rows, so browsing them adds no extra search cost. In preview mode, the tab shows the curated starter channels that match the topic.
+
+Channel search runs on submission and searches YouTube beyond the suggestions. Results arrive 12 at a time with infinite scroll: a sentinel near the bottom requests the next page, and a failed page shows a retry button. Search results are not automatically classified into topics. Any channel whose ID appears in your last YouTube import shows a **Subscribed on YouTube** badge.
 
 Follow/Unfollow stores channels separately in `devflix-following-v1`, persists across reloads, and synchronizes across tabs. These are local DevFlix follows, not YouTube account subscriptions. Channel cards link to the original YouTube channel.
 
@@ -59,11 +63,17 @@ Preview mode supports following the starter directory and shows only matching sa
 
 ## First-visit personalization
 
-On first visit, a skippable two-step setup lets learners choose topics and creators. Topic tiles are multi-select with no minimum; the creator grid prioritizes matching topics and supports YouTube search. Selection is a draft until completion. Back/search preserve selections, Skip discards the draft while retaining existing follows, and Cancel during editing leaves saved preferences untouched.
+On first visit, a skippable two-step setup lets learners choose topics and creators. Topic tiles are multi-select with no minimum. The creator step suggests trending creators for the chosen topics, or for all topics when none are chosen, so each suggestion is a channel behind recent popular videos in that topic. Search runs on submission and uses infinite scroll, as on the Channels tab. Creators you already subscribe to on YouTube carry the same **Subscribed on YouTube** badge. Selection is a draft until completion. Back/search preserve selections, Skip discards the draft while retaining existing follows, and Cancel during editing leaves saved preferences untouched.
 
-Completing setup saves topics in `devflix-preferences-v1` and selected creators in the existing following store. The For you homepage shows matching topic collections, a featured video from the first matching collection, and a lazy-loaded New from your channels row. Continue Watching and My List remain available. DevOps has its own uploads collection. Discover keeps the full catalog, and explicit topic filters can explore outside selected interests.
+Completing setup saves topics in `devflix-preferences-v1` and selected creators in the existing following store. The For you page is ordered as follows:
 
-Edit interests on the For you page reopens setup with existing topics and follows selected, including creators outside the starter directory. Returning visits skip setup. Preferences are local to this browser and synchronize between tabs; unavailable storage falls back to the current session. Personalization is explicit topic matching and channel follows, not inferred watch-history recommendations.
+1. **Continue Watching** and **My List**, when they have items.
+2. **`<Topic>` from your channels** rows. Uploads from followed channels are grouped by the topic found in each video's title and description. When a video matches no topic, its channel's topics are used. Uploads that match neither go to **More from your channels**. Each row shows up to 20 videos.
+3. **Trending in your interests**, with one trending row per selected topic. With no topics selected, the heading reads **Trending this month** and rows cover every topic.
+
+Discover shows every topic, and explicit topic filters can explore outside selected interests. The For you hero features the first shown topic. Preview mode fills the followed-channel rows with the sample videos of the followed starter channels.
+
+Edit interests on the For you page reopens setup with existing topics and follows selected, including creators outside the suggestions. Returning visits skip setup. Preferences are local to this browser and synchronize between tabs; unavailable storage falls back to the current session. Personalization is explicit topic matching and channel follows, not inferred watch-history recommendations.
 
 ## Import from YouTube
 
@@ -75,12 +85,14 @@ Google Cloud setup:
 2. Create an OAuth client ID of type **Web application**. Add `http://localhost:5173` and your production origin to **Authorized JavaScript origins**.
 3. Enable **YouTube Data API v3** in the same project.
 
-The only scope requested is `youtube.readonly`. The access token is held in memory for a single import and is revoked as soon as the subscriptions have been read. Nothing is written to YouTube. DevFlix does not store the token or the full subscription list; only the channels you keep selected are saved as follows.
+The only scope requested is `youtube.readonly`. The access token is held in memory for a single import and is revoked as soon as the subscriptions have been read. Nothing is written to YouTube. DevFlix does not store the token. It saves the channel IDs of your subscriptions in `devflix-youtube-subscriptions-v1` so that search and suggestion results can show the **Subscribed on YouTube** badge. Each import replaces that list, and it holds IDs only, not titles or other subscription details. Only the channels you keep selected are followed.
 
 Each import reads up to 1000 subscriptions. Quota cost is about 1 unit per 50 subscriptions for each of `subscriptions.list` and `channels.list`.
 
-Classification is keyword-based. It checks each channel's title, description and channel keywords for AI and dev terms. Curated channels always match. Keyword matching can miss relevant channels or include unrelated ones, so matches arrive pre-selected for review and deselecting any of them is expected. The remaining subscriptions stay unselected behind **Show N other subscriptions** and can be picked individually.
+A second pass covers subscriptions the keyword check did not match. For up to 500 of them, DevFlix reads the titles of the 10 most recent uploads with `playlistItems.list`, at 1 unit per channel, and runs the same topic checks on those titles. A channel is matched when at least two of its titles, and at least 30% of them, look like AI or dev content. Its topics come from titles that share a topic. Channels with no uploads, or with a failed title lookup, stay in the unmatched group.
+
+Classification is keyword-based first. It checks each channel's title, description and channel keywords for AI and dev terms, and the upload-title pass above covers channels the keywords miss. Curated channels always match. Keyword matching can miss relevant channels or include unrelated ones, so matches arrive pre-selected for review and deselecting any of them is expected. The remaining subscriptions stay unselected behind **Show N other subscriptions** and can be picked individually.
 
 ## Validation status
 
-Production build and TypeScript checks pass. All 22 automated tests pass, covering onboarding completion, skip/cancel, returning visits, edit/search selection preservation, personalized homepage content, YouTube import classification, pre-selection, error retry and the hidden-when-unconfigured state, local video storage, query identities, channel follow/unfollow persistence, category filtering, feed merging and ordering, and the Channels-to-Following interaction. Live API and visual browser verification are not part of these automated tests. The local dev server could not be started in the execution environment because opening port 5173 was denied (EPERM).
+Production build and TypeScript checks pass. All 31 automated tests pass, covering onboarding completion, skip/cancel, returning visits, edit/search selection preservation, personalized For you and Discover rows, YouTube import classification, the upload-title pass, pre-selection, error retry and the hidden-when-unconfigured state, stored subscription IDs and the Subscribed badge, topic-split rows for followed channels, local video storage, query identities, channel follow/unfollow persistence, category filtering, feed merging and ordering, and the Channels-to-Following interaction. Live API and visual browser verification are not part of these automated tests. The local dev server could not be started in the execution environment because opening port 5173 was denied (EPERM).

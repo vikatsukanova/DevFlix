@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import Onboarding from './Onboarding';
 import App from './App';
-import { matchesInterests, preferenceKey, readPreferences } from './preferences';
+import { preferenceKey, readPreferences } from './preferences';
 import { readFollowing, setFollowing } from './channelStore';
 import { curatedChannels } from './channels';
 vi.mock('./api', async original => ({ ...await original<typeof import('./api')>(), isDemo: true }));
@@ -24,9 +24,6 @@ it('validates stored preferences and maps all supported topics', () => {
   expect(readPreferences('null')).toEqual({ completed: false, interests: [] });
   expect(readPreferences('bad')).toEqual({ completed: false, interests: [] });
   expect(readPreferences(JSON.stringify({ completed: true, interests: ['Frontend', 'Frontend', 'All topics', 'unknown'] }))).toEqual({ completed: true, interests: ['Frontend'] });
-  expect(matchesInterests('Web development', ['Frontend'])).toBe(true);
-  expect(matchesInterests('DevOps', ['DevOps'])).toBe(true);
-  expect(matchesInterests('System design', ['Frontend'])).toBe(false);
 });
 it('completes onboarding and personalizes the homepage, while keeping Discover available', async () => {
   wrapper(<App/>);
@@ -36,12 +33,13 @@ it('completes onboarding and personalizes the homepage, while keeping Discover a
   fireEvent.click(screen.getByRole('button', { name: 'Build my homepage' }));
   expect(readPreferences(localStorage.getItem(preferenceKey))).toEqual({ completed: true, interests: ['Frontend'] });
   expect(readFollowing(localStorage.getItem('devflix-following-v1'))[0].title).toBe('Fireship');
-  expect(screen.getByRole('heading', { name: 'Explore your interests' })).toBeTruthy();
-  expect(screen.getByRole('heading', { name: 'New from your channels' })).toBeTruthy();
-  expect(screen.queryByRole('heading', { name: 'Backend Fundamentals' })).toBeNull();
-  expect(await screen.findByRole('heading', { name: 'React in 100 Seconds' })).toBeTruthy();
+  expect(screen.getByRole('heading', { name: 'Trending in your interests' })).toBeTruthy();
+  expect(screen.getByRole('heading', { name: 'From your channels' })).toBeTruthy();
+  expect(screen.getByRole('heading', { name: 'Trending in Frontend' })).toBeTruthy();
+  expect(screen.queryByRole('heading', { name: 'Trending in Backend' })).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: /^Discover$/ }));
-  expect(screen.getByRole('heading', { name: 'Backend Fundamentals' })).toBeTruthy();
+  expect(screen.getByRole('heading', { name: 'Trending in Backend' })).toBeTruthy();
+  expect(screen.getByRole('heading', { name: 'Trending in Frontend' })).toBeTruthy();
 });
 it('skip discards drafts, preserves follows, and does not repeat on a returning visit', () => {
   setFollowing([curatedChannels[1]]);
@@ -65,7 +63,7 @@ it('allows empty completion and cancelling edits without changing persisted choi
   wrapper(<Onboarding editing onDone={done}/>);
   fireEvent.click(screen.getByRole('button', { name: /Backend/ }));
   fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Select Fireship' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Select ByteByteGo' }));
   fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
   expect(readPreferences(localStorage.getItem(preferenceKey)).interests).toEqual([]);
   expect(readFollowing(localStorage.getItem('devflix-following-v1'))).toEqual([]);
