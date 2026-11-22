@@ -1,0 +1,42 @@
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
+import { ArrowRight, Check, ChevronLeft, Code2, Database, Layers, Search, Server, Sparkles } from 'lucide-react';
+import { curatedChannels, type Channel } from './channels';
+import { channelDetails, searchChannels } from './channelApi';
+import { isDemo } from './api';
+import { queryKeys } from './queryKeys';
+import { setFollowing, useFollowing } from './channelStore';
+import { savePreferences, usePreferences, type Interest } from './preferences';
+const topics: { id: Interest; title: string; description: string; icon: typeof Code2; color: string; motif: string }[] = [
+  { id: 'AI & Agents', title: 'AI & Agents', description: 'Build the next generation', icon: Sparkles, color: '#b99cff', motif: '✳' },
+  { id: 'Frontend', title: 'React & Frontend', description: 'Bring your ideas to life', icon: Code2, color: '#7ed5ec', motif: '</>' },
+  { id: 'Backend', title: 'Backend', description: 'Go beyond the interface', icon: Database, color: '#f2b77a', motif: '{ }' },
+  { id: 'System Design', title: 'System Design', description: 'Think in bigger systems', icon: Layers, color: '#e99fc3', motif: '◈' },
+  { id: 'DevOps', title: 'DevOps', description: 'Build. Ship. Repeat.', icon: Server, color: '#94d6ab', motif: '∞' },
+];
+function CreatorChoice({ channel, selected, onToggle }: { channel: Channel; selected: boolean; onToggle: () => void }) {
+  const [failed, setFailed] = useState(false);
+  return <button className={`creator-choice ${selected ? 'chosen' : ''}`} aria-pressed={selected} aria-label={`Select ${channel.title}`} onClick={onToggle}><span className="choice-check">{selected && <Check size={16}/>}</span><span className="creator-portrait">{channel.thumbnail && !failed ? <img src={channel.thumbnail} alt="" onError={() => setFailed(true)}/> : <span>{channel.title.slice(0, 2).toUpperCase()}</span>}</span><strong>{channel.title}</strong><span className="creator-description">{channel.description || 'Videos, ideas, and inspiration.'}</span></button>;
+}
+export default function Onboarding({ editing, onDone }: { editing: boolean; onDone: () => void }) {
+  const preferences = usePreferences();
+  const following = useFollowing();
+  const [interests, setInterests] = useState<Interest[]>(preferences.interests);
+  const [selected, setSelected] = useState<Channel[]>(following);
+  const [step, setStep] = useState(0);
+  const [input, setInput] = useState('');
+  const [term, setTerm] = useState('');
+  const title = useRef<HTMLHeadingElement>(null);
+  useEffect(() => { title.current?.focus(); window.scrollTo({ top: 0 }); }, [step]);
+  const directory = useQuery({ queryKey: queryKeys.channelDirectory, queryFn: ({ signal }) => channelDetails(curatedChannels.map(c => c.id), signal), enabled: step === 1 && !isDemo });
+  const search = useInfiniteQuery({ queryKey: queryKeys.channelSearch(term), initialPageParam: '', queryFn: ({ pageParam, signal }) => searchChannels(term, pageParam, signal), getNextPageParam: page => page.nextPageToken, enabled: step === 1 && !!term && !isDemo });
+  const collection = curatedChannels.map(c => ({ ...c, ...directory.data?.find(d => d.id === c.id), topics: c.topics, description: c.description }));
+  const ordered = [...collection].sort((a, b) => Number(b.topics.some(t => interests.includes(t as Interest))) - Number(a.topics.some(t => interests.includes(t as Interest))));
+  const choices = term && !isDemo ? [...new Map(search.data?.pages.flatMap(p => p.channels).map(c => [c.id, c])).values()] : ordered.filter(c => !term || `${c.title} ${c.description}`.toLowerCase().includes(term.toLowerCase()));
+  // Include previously followed creators outside the starter directory so editing never hides them.
+  const extras = !term ? selected.filter(c => !choices.some(choice => choice.id === c.id)) : [];
+  function toggleChannel(c: Channel) { setSelected(current => current.some(x => x.id === c.id) ? current.filter(x => x.id !== c.id) : [...current, c]); }
+  function finish() { setFollowing(selected); savePreferences(interests); onDone(); }
+  function skip() { if (!editing) savePreferences(preferences.interests); onDone(); }
+  return <div className="onboarding"><div className="onboarding-top"><span className="logo">DEV<span>FLIX</span><i/></span><button className="text-button" onClick={skip}>{editing ? 'Cancel' : 'Skip for now'}</button></div><main className="setup-content"><div className="setup-steps" aria-label={`Step ${step + 1} of 2`}><span className={step === 0 ? 'current' : 'complete'}>01 <span>Your interests</span></span><i/><span className={step === 1 ? 'current' : ''}>02 <span>Your creators</span></span></div><p className="eyebrow">{editing ? 'MAKE IT YOURS AGAIN' : 'A LITTLE ABOUT YOU'}</p><h1 ref={title} tabIndex={-1}>{step === 0 ? <>What sparks your<br/><em>curiosity?</em></> : <>Who do you love<br/><em>learning from?</em></>}</h1><p className="setup-intro">{step === 0 ? 'Pick the topics you want more of. We’ll make a little space for your next big idea.' : 'Pick familiar faces, discover someone new. Your picks become your followed channels.'}</p><p className="setup-hint">Choose as many or as few as you like. You can change these anytime.</p>{step === 0 ? <div className="interest-grid">{topics.map(({ id, title: label, description, icon: Icon, color, motif }) => { const active = interests.includes(id); return <button key={id} className={`interest-tile ${active ? 'chosen' : ''}`} style={{ '--tile-color': color } as CSSProperties} aria-pressed={active} onClick={() => setInterests(current => active ? current.filter(t => t !== id) : [...current, id])}><span className="choice-check">{active && <Check size={16}/>}</span><span className="topic-art" aria-hidden="true">{motif}</span><Icon size={21}/><strong>{label}</strong><span>{description}</span></button>; })}</div> : <><form className="channel-search setup-search" onSubmit={e => { e.preventDefault(); setTerm(input.trim()); }}><Search size={18}/><input aria-label="Find a creator" placeholder="Find a creator you know…" value={input} onChange={e => setInput(e.target.value)}/><button className="button secondary" type="submit">Search</button>{term && <button className="text-button" type="button" onClick={() => { setInput(''); setTerm(''); }}>Clear</button>}</form>{isDemo && <p className="setup-hint">Preview collection · YouTube search and channel photos are available when connected.</p>}{directory.isError && <p role="status">Channel photos couldn’t load. You can still select creators. <button className="text-button" onClick={() => void directory.refetch()}>Retry photos</button></p>}{term && !isDemo && search.isPending && <p role="status">Finding creators…</p>}{term && search.isError && <div role="alert" className="error-box"><p>{search.error.message}</p><button className="text-button" onClick={() => search.isFetchNextPageError ? void search.fetchNextPage() : void search.refetch()}>Retry search</button></div>}<div className="creator-grid">{[...extras, ...choices].map(c => <CreatorChoice key={c.id} channel={c} selected={selected.some(x => x.id === c.id)} onToggle={() => toggleChannel(c)}/>)}</div>{term && !choices.length && (isDemo || (!search.isPending && !search.isError)) && <p className="muted">No creators found. Try another name.</p>}{term && search.hasNextPage && <button className="button secondary" disabled={search.isFetchingNextPage} onClick={() => void search.fetchNextPage()}>{search.isFetchingNextPage ? 'Loading…' : 'More creators'}</button>}</>}<div className="setup-bottom"><div>{step === 1 && <button className="text-button setup-back" onClick={() => setStep(0)}><ChevronLeft size={17}/> Back</button>}<span role="status">{step === 0 ? `${interests.length} topic${interests.length === 1 ? '' : 's'} selected` : `${selected.length} creator${selected.length === 1 ? '' : 's'} selected`}</span></div><button className="button primary" onClick={step === 0 ? () => setStep(1) : finish}>{step === 0 ? 'Continue' : editing ? 'Save my interests' : 'Build my homepage'}<ArrowRight size={18}/></button></div><p className="setup-privacy">Just for you, saved in this browser. No account needed.</p></main></div>;
+}
