@@ -35,12 +35,34 @@ export async function search(term: string, pageToken: string, signal?: AbortSign
   const data = await request<{ items: Item[]; nextPageToken?: string }>('search', { part: 'snippet', type: 'video', videoEmbeddable: 'true', q: term, maxResults: '20', ...(pageToken ? { pageToken } : {}) }, signal);
   return { videos: data.items.map(normalize), nextPageToken: data.nextPageToken };
 }
-const DAY = 24 * 60 * 60 * 1000;
-/** Most-viewed embeddable videos for a topic from the last 30 days. The cutoff is rounded to the day so cached queries stay stable. */
-export async function trending(query: string, signal?: AbortSignal): Promise<Video[]> {
-  const since = new Date(Math.floor((Date.now() - 30 * DAY) / DAY) * DAY).toISOString();
-  const data = await request<{ items: Item[] }>('search', { part: 'snippet', type: 'video', videoEmbeddable: 'true', q: query, order: 'viewCount', publishedAfter: since, relevanceLanguage: 'en', maxResults: '25' }, signal);
+export const DAY = 24 * 60 * 60 * 1000;
+/** ISO date `days` ago, rounded to the day so cached query results stay stable. */
+export const daysAgo = (days: number) => new Date(Math.floor((Date.now() - days * DAY) / DAY) * DAY).toISOString();
+export interface VideoSearch { q: string; order: 'viewCount' | 'relevance' | 'date'; publishedAfter?: string; videoDuration?: 'short' | 'medium' | 'long'; maxResults?: number }
+/** search.list for embeddable English videos (100 quota units per call). */
+export async function searchVideos({ q, order, publishedAfter, videoDuration, maxResults = 25 }: VideoSearch, signal?: AbortSignal): Promise<Video[]> {
+  const data = await request<{ items: Item[] }>('search', { part: 'snippet', type: 'video', videoEmbeddable: 'true', q, order, relevanceLanguage: 'en', maxResults: String(maxResults), ...(publishedAfter ? { publishedAfter } : {}), ...(videoDuration ? { videoDuration } : {}) }, signal);
   return data.items.map(normalize);
+}
+/** Most-viewed embeddable videos for a topic from the last 30 days. */
+export const trending = (query: string, signal?: AbortSignal) => searchVideos({ q: query, order: 'viewCount', publishedAfter: daysAgo(30) }, signal);
+export interface VideoStats { views?: number; likes?: number; duration?: string }
+/** View counts and durations for up to 50 videos per call (1 quota unit per call). */
+export async function videoStats(ids: string[], signal?: AbortSignal): Promise<Record<string, VideoStats>> {
+  const unique = [...new Set(ids)];
+  const out: Record<string, VideoStats> = {};
+  for (let i = 0; i < unique.length; i += 50) {
+    const data = await request<{ items: { id: string; statistics?: { viewCount?: string; likeCount?: string }; contentDetails?: { duration?: string } }[] }>('videos', { part: 'statistics,contentDetails', id: unique.slice(i, i + 50).join(','), maxResults: '50' }, signal);
+    for (const v of data.items) out[v.id] = { views: v.statistics?.viewCount ? Number(v.statistics.viewCount) : undefined, likes: v.statistics?.likeCount ? Number(v.statistics.likeCount) : undefined, duration: v.contentDetails?.duration };
+  }
+  return out;
+}
+/** ISO 8601 duration (PT1H2M3S) to seconds. */
+export function durationSeconds(iso?: string): number | undefined {
+  const m = iso?.match(/^P(?:(\d+)D)?T?(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/);
+  if (!m) return undefined;
+  const [, d = '0', h = '0', min = '0', sec = '0'] = m;
+  return ((Number(d) * 24 + Number(h)) * 60 + Number(min)) * 60 + Number(sec);
 }
 export const demoVideos: Video[] = [
   ['i7twT3x5yv8', 'System Design Interview: A Step-By-Step Guide', 'ByteByteGo'],
