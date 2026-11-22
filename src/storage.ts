@@ -17,6 +17,7 @@ function publish() { listeners.forEach(fn => fn()); }
 function commit(next: Library) { state = next; try { localStorage.setItem(key, JSON.stringify(state)); } catch { /* session-only fallback */ } publish(); }
 window.addEventListener('storage', event => { if (event.key === key) { state = readLibrary(event.newValue); publish(); } });
 export const toggleSaved = (video: Video) => commit({ ...state, saved: state.saved.some(v => v.id === video.id) ? state.saved.filter(v => v.id !== video.id) : [video, ...state.saved].slice(0, 200) });
+export const clearWatching = () => commit({ ...state, watching: [] });
 export const saveProgress = (video: Video, seconds: number, duration: number) => {
   if (!Number.isFinite(seconds) || seconds < 1 || !Number.isFinite(duration) || duration <= 0) return;
   const remaining = state.watching.filter(p => p.video.id !== video.id);

@@ -54,3 +54,31 @@
   .creator-profile{flex-direction:column}
 }
 .subscriber-count{font-size:13px;color:#e9e4f2;font-weight:600;margin:0 0 10px}.creator-choice .subscriber-count{margin:0}.size-filter{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:10px 0}.size-filter .topics{padding:5px 0}.size-filter .topics button{padding:7px 12px}.size-sort{background:#17151e;border:1px solid #37313f;border-radius:6px;color:#d8d2e4;font-size:11px;padding:7px 10px}.size-sort:focus-visible{outline:2px solid #b3a0ff;outline-offset:2px}
+
+/* Settings dialog */
+button.avatar{cursor:pointer;padding:0;font-family:inherit}button.avatar:hover{background:#3c3350}
+@media(max-width:1050px){button.avatar{margin-left:0}}
+@media(max-width:800px){header .avatar.profile-button{display:grid;order:2}}
+.settings-dialog{padding:0;border:1px solid #3a2f4a;border-radius:13px;background:#16131c;color:#f4f4f6;width:min(520px,92vw);max-height:90vh;position:fixed;margin:auto;box-shadow:0 30px 100px #0008}
+.settings-dialog::backdrop{background:#000b;backdrop-filter:blur(8px)}
+.settings-dialog form{padding:24px;display:flex;flex-direction:column;gap:18px}
+.settings-dialog h2{font-size:20px;margin:0}
+.settings-field{border:0;padding:0;margin:0;min-width:0;display:flex;flex-direction:column;gap:8px}
+.settings-label,.settings-field>label{font-size:12px;font-weight:650;color:#e9e4f2;padding:0}
+.settings-dialog select{background:#17151e;border:1px solid #3a2f4a;border-radius:6px;color:#d8d2e4;font:inherit;font-size:13px;padding:9px 10px;width:100%}
+.settings-dialog select:focus-visible,.settings-radio input:focus-visible{outline:2px solid #b3a0ff;outline-offset:2px}
+.settings-chips{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:8px}
+.settings-chips li{display:flex;align-items:center;gap:6px;border:1px solid #3a2f4a;border-radius:6px;padding:6px 6px 6px 11px;font-size:12px;color:#d8d2e4}
+.settings-chips button{display:grid;place-items:center;width:20px;height:20px;border:0;border-radius:50%;background:none;color:#96909f}
+.settings-chips button:hover:not(:disabled){background:#30293f;color:#c1a9ff}
+.settings-chips button:disabled{cursor:not-allowed;opacity:.35}
+.settings-hint,.settings-note{font-size:11px;color:#96909f;margin:0;line-height:1.5}
+.settings-radio{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid #3a2f4a;border-radius:8px;cursor:pointer}
+.settings-radio:has(input:checked){border-color:#c1a9ff;background:#1d1828}
+.settings-radio input{margin:3px 0 0;accent-color:#c1a9ff}
+.settings-radio strong{display:block;font-size:13px;font-weight:600}
+.settings-radio small{display:block;font-size:11px;color:#96909f;line-height:1.5;margin-top:2px}
+.settings-actions{display:flex;justify-content:flex-end;gap:10px}
+.rail-controls{align-items:center}
+.rail-action{margin-right:8px;font-size:12px}
+.rail-confirm{display:inline-flex;align-items:center;gap:10px;font-size:12px;color:#96909f;margin-right:4px}
