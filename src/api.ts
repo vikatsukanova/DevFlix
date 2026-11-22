@@ -5,11 +5,12 @@ interface Snippet { publishedAt?: string; title: string; channelTitle: string; v
 interface Item { id: string | { videoId: string }; snippet: Snippet; contentDetails?: { duration?: string; videoPublishedAt?: string }; status?: { embeddable: boolean } }
 export const isDemo = !import.meta.env.VITE_YT_API_KEY;
 export class ApiError extends Error { constructor(message: string, public status: number) { super(message); } }
-export async function request<T>(endpoint: string, params: Record<string, string>, signal?: AbortSignal): Promise<T> {
+export async function request<T>(endpoint: string, params: Record<string, string>, signal?: AbortSignal, accessToken?: string): Promise<T> {
   if (isDemo) throw new ApiError('Add VITE_YT_API_KEY to .env.local to connect YouTube.', 400);
   const url = new URL(`https://www.googleapis.com/youtube/v3/${endpoint}`);
   url.search = new URLSearchParams({ ...params, key: import.meta.env.VITE_YT_API_KEY }).toString();
-  const response = await fetch(url, { signal });
+  const response = await fetch(url, { signal, headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined });
+  if (response.status === 401 && accessToken) throw new ApiError('Your YouTube sign-in expired. Please import again.', 401);
   if (!response.ok) {
     const body = await response.json().catch(() => null);
     const reason = body?.error?.errors?.[0]?.reason;
