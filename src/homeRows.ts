@@ -142,4 +142,4 @@ async function rowCandidates(id: HomeRowId, topics: Topic[], signal?: AbortSigna
   }
 }
 
-export const homeRowKey = (id: HomeRowId, topics: Topic[]) => ['youtube', 'home-row', 'v3', id, [...topics].sort().join(',')] as const;
+export const homeRowKey = (id: HomeRowId, topics: Topic[]) => ['youtube', 'home-row', 'v4', id, [...topics].sort().join(',')] as const;

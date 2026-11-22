@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { isClickbait, isDevRelated, isOffTopic } from './classify';
+import { decodeEntities } from './api';
 
 describe('isOffTopic', () => {
   it('flags politics, news and games', () => {
@@ -24,5 +25,28 @@ describe('isClickbait', () => {
   });
   it('allows normal titles, acronyms and numbers', () => {
     for (const t of ['Make 5 apps with React', 'HTML and JSON basics', 'REST vs GraphQL', 'Build a RAG app 🚀']) expect(isClickbait(t)).toBe(false);
+  });
+});
+
+describe('AI commentary vs AI building', () => {
+  const title = "US AI in China's robots. Why 50 could trigger extinction. Stephen Fry";
+  it('rejects AI doom and geopolitics commentary', () => {
+    expect(isOffTopic(title)).toBe(true);
+    expect(isDevRelated(title)).toBe(false);
+    expect(isDevRelated('Why AI will change everything')).toBe(false);
+  });
+  it('accepts AI videos about building', () => {
+    for (const t of ['Build an AI agent with LangGraph', 'Claude Code workflow for big repos', 'RAG explained in 10 minutes', 'OpenAI API tutorial']) expect(isDevRelated(t)).toBe(true);
+  });
+  it('still accepts non-AI dev topics without a builder word', () => {
+    expect(isDevRelated('Kubernetes networking')).toBe(true);
+  });
+});
+
+describe('decodeEntities', () => {
+  it('turns YouTube\'s HTML escapes back into characters', () => {
+    expect(decodeEntities('US AI in China&#39;s robots')).toBe("US AI in China's robots");
+    expect(decodeEntities('Tom &amp; Jerry &quot;quoted&quot; &lt;tag&gt; &#x1F680;')).toBe('Tom & Jerry "quoted" <tag> 🚀');
+    expect(decodeEntities('&unknown; stays')).toBe('&unknown; stays');
   });
 });

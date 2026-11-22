@@ -35,10 +35,14 @@ export function classifyByTitles(id: string, titles: string[]): Classification {
 }
 /** True when a title or description is about software development or AI. */
 export function isDevRelated(text: string): boolean {
-  return topicsForText(text).length > 0 || generalDev.test(text);
+  const topics = topicsForText(text);
+  if (topics.some(t => t !== 'AI & Agents') || generalDev.test(text)) return true;
+  // "AI" alone is too broad (commentary, doom, geopolitics); an AI video also needs a sign it's about building.
+  return topics.includes('AI & Agents') && builderSignal.test(text);
 }
+const builderSignal = /\b(build(s|ing)?|code|coding|coder|tutorial|course|how to|guide|explained|step[- ]by[- ]step|project|from scratch|hands[- ]on|demo|workflow|set ?up|install|deploy(ing|ment)?|api|sdk|framework|library|prompting|engineer(s|ing)?|developers?|programming|python|javascript|typescript|cli|ide|repo|github|open[- ]source|mcp|rag|langchain|langgraph|llamaindex|fine[- ]?tun\w*|claude code|cursor (ai|ide|editor)|copilot|codex|agents? (framework|sdk|from scratch)|automation)\b/i;
 /** Politics, news, games and entertainment that slip in through broad searches (e.g. "AI" in a GTA 6 video). */
-const offTopic = /\b(news(?! ?feeds?)|breaking news|politics?|political|election|elections|president|congress|senate|parliament|democrats?|republicans?|trump|biden|tariffs?|war|ukraine|russia|israel|gaza|iran|gta ?(vi|v|6|5)?|grand theft auto|fortnite|minecraft|roblox|call of duty|valorant|playstation|ps5|xbox|nintendo|gameplay|walkthrough|let'?s play|trailer|movie|box office|celebrity|nfl|nba|world cup)\b/i;
+const offTopic = /\b(news(?! ?feeds?)|breaking news|politics?|political|election|elections|president|congress|senate|parliament|democrats?|republicans?|trump|biden|tariffs?|war|ukraine|russia|israel|gaza|iran|gta ?(vi|v|6|5)?|grand theft auto|fortnite|minecraft|roblox|call of duty|valorant|playstation|ps5|xbox|nintendo|gameplay|walkthrough|let'?s play|trailer|movie|box office|celebrity|nfl|nba|world cup|china|chinese|military|weapons?|geopolitic\w*|extinction|existential|doom(sday)?|apocalypse|humanity|singularity|superintelligence|end of (the )?world|takeover)\b/i;
 export function isOffTopic(title: string): boolean {
   return offTopic.test(title);
 }

@@ -18,9 +18,17 @@ export async function request<T>(endpoint: string, params: Record<string, string
   }
   return response.json();
 }
+const NAMED_ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' };
+/** YouTube search returns titles and descriptions HTML-escaped (e.g. "China&#39;s"); React would show the escapes literally. */
+export function decodeEntities(text: string): string {
+  return text.replace(/&(#x[\da-f]+|#\d+|[a-z]+);/gi, (match, code: string) => {
+    if (code[0] === '#') { const n = code[1].toLowerCase() === 'x' ? parseInt(code.slice(2), 16) : parseInt(code.slice(1), 10); return Number.isFinite(n) ? String.fromCodePoint(n) : match; }
+    return NAMED_ENTITIES[code.toLowerCase()] ?? match;
+  });
+}
 export function normalize(item: Item): Video {
   const s = item.snippet;
-  return { id: s.resourceId?.videoId ?? (typeof item.id === 'string' ? item.id : item.id.videoId), title: s.title, channel: s.videoOwnerChannelTitle ?? s.channelTitle, channelId: s.videoOwnerChannelId ?? s.channelId, description: s.description, thumbnail: s.thumbnails.maxres?.url ?? s.thumbnails.high?.url ?? s.thumbnails.medium?.url ?? '', publishedAt: item.contentDetails?.videoPublishedAt ?? s.publishedAt, duration: item.contentDetails?.duration };
+  return { id: s.resourceId?.videoId ?? (typeof item.id === 'string' ? item.id : item.id.videoId), title: decodeEntities(s.title), channel: s.videoOwnerChannelTitle ?? s.channelTitle, channelId: s.videoOwnerChannelId ?? s.channelId, description: decodeEntities(s.description), thumbnail: s.thumbnails.maxres?.url ?? s.thumbnails.high?.url ?? s.thumbnails.medium?.url ?? '', publishedAt: item.contentDetails?.videoPublishedAt ?? s.publishedAt, duration: item.contentDetails?.duration };
 }
 export async function playlist(id: string, signal?: AbortSignal): Promise<Video[]> {
   const data = await request<{ items: Item[] }>('playlistItems', { part: 'snippet,contentDetails', playlistId: id, maxResults: '20' }, signal);
