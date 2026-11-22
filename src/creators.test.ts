@@ -148,7 +148,8 @@ describe('topicsQuery', () => {
 });
 
 describe('fetchHomeRow (live mode)', () => {
-  const video = (id: string, channelId?: string): Video => ({ id, title: id, channel: channelId ?? 'none', channelId, description: '', thumbnail: '' });
+  // Titles mention coding so the dev-relevance check passes; ids stay short for readable expectations.
+  const video = (id: string, channelId?: string): Video => ({ id, title: `${id} coding tutorial`, channel: channelId ?? 'none', channelId, description: '', thumbnail: '' });
 
   beforeEach(() => {
     clearWeekPools();
@@ -160,7 +161,7 @@ describe('fetchHomeRow (live mode)', () => {
   /** Mocks one search result set: each entry is [videoId, channelId, views]. */
   function mockRising(entries: [string, string | undefined, number][], subscribers: Record<string, number>) {
     vi.mocked(searchVideos).mockResolvedValue(entries.map(([id, channelId]) => video(id, channelId)));
-    vi.mocked(videoStats).mockResolvedValue(Object.fromEntries(entries.map(([id, , views]) => [id, { views }])));
+    vi.mocked(videoStats).mockResolvedValue(Object.fromEntries(entries.map(([id, , views]) => [id, { views, duration: 'PT10M' }])));
     vi.mocked(channelProfiles).mockResolvedValue(Object.fromEntries(Object.entries(subscribers).map(([id, subs]) => [id, { id, title: id, description: '', subscribers: subs } satisfies CreatorProfile])));
   }
 
@@ -207,7 +208,7 @@ describe('fetchHomeRow (live mode)', () => {
     expect(searchVideos).toHaveBeenCalledTimes(1);
   });
 
-  it('rising: keeps only channels with 1K to 250K subscribers, ranked by views per subscriber', async () => {
+  it('rising: keeps only channels with 1K to 250K subscribers and 10K+ views, ranked by views per subscriber', async () => {
     mockRising([
       ['e', 'UCmid', 300_000],     // 300K / 60K = 5
       ['c', 'UCbig', 1_000_000],   // 10M subscribers is over the range
@@ -221,9 +222,20 @@ describe('fetchHomeRow (live mode)', () => {
 
     const rows = await fetchHomeRow('rising', ['Frontend']);
 
-    expect(rows.map(v => v.id)).toEqual(['a', 'e', 'h', 'g', 'f']);
+    expect(rows.map(v => v.id)).toEqual(['a', 'e', 'g']); // h and f are under 10K views
     expect(searchVideos).toHaveBeenCalledWith(expect.objectContaining({ q: 'React JS', order: 'viewCount', maxResults: 50 }), undefined);
     expect(channelProfiles).toHaveBeenCalledWith(expect.arrayContaining(['UCmid', 'UCbig']), undefined);
+  });
+
+  it('rising: skips short videos, clickbait titles and off-topic videos', async () => {
+    const v = (id: string, title: string): Video => ({ ...video(id, `UC${id}`), title });
+    vi.mocked(searchVideos).mockResolvedValue([v('ok', 'Building a Postgres queue in Go'), v('short', 'Coding tip'), v('bait', 'This AI Tool Is INSANE 🤯🔥'), v('gta', 'GTA 6 coding easter eggs')]);
+    vi.mocked(videoStats).mockResolvedValue({ ok: { views: 40_000, duration: 'PT14M' }, short: { views: 90_000, duration: 'PT2M' }, bait: { views: 90_000, duration: 'PT14M' }, gta: { views: 90_000, duration: 'PT14M' } });
+    vi.mocked(channelProfiles).mockResolvedValue(Object.fromEntries(['ok', 'short', 'bait', 'gta'].map(id => [`UC${id}`, { id: `UC${id}`, title: id, description: '', subscribers: 20_000 }])));
+
+    const rows = await fetchHomeRow('rising', ['Backend']);
+
+    expect(rows.map(r => r.id)).toEqual(['ok']);
   });
 
   it('rising: keeps the top-ranked video when one channel has several qualifying videos', async () => {

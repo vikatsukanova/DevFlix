@@ -72,6 +72,21 @@ describe('englishOnly', () => {
     expect(kept.map(v => v.id)).toEqual(['en']);
   });
 
+  it('drops videos in blocked categories such as Gaming and News & Politics, using the same call', async () => {
+    const fetchMock = vi.fn(async (_url: string | URL | Request) => json({
+      items: [
+        { id: 'tech', snippet: { defaultAudioLanguage: 'en', categoryId: '28' } },
+        { id: 'edu', snippet: { defaultAudioLanguage: 'en', categoryId: '27' } },
+        { id: 'game', snippet: { defaultAudioLanguage: 'en', categoryId: '20' } },
+        { id: 'politics', snippet: { defaultAudioLanguage: 'en', categoryId: '25' } },
+      ],
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    const kept = await api.englishOnly(['tech', 'edu', 'game', 'politics'].map(id => video(id, 'Lesson')));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(kept.map(v => v.id)).toEqual(['tech', 'edu']);
+  });
+
   it('batches video IDs 50 at a time', async () => {
     const fetchMock = vi.fn(async (_url: string | URL | Request) => json({ items: [] }));
     vi.stubGlobal('fetch', fetchMock);
