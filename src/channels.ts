@@ -1,6 +1,6 @@
 export const channelTopics = ['All topics', 'AI & Agents', 'Frontend', 'Backend', 'System Design', 'DevOps'] as const;
 export type ChannelTopic = typeof channelTopics[number];
-export interface Channel { id: string; title: string; description: string; thumbnail?: string; uploadsId?: string; topics: ChannelTopic[] }
+export interface Channel { id: string; title: string; description: string; thumbnail?: string; uploadsId?: string; country?: string; topics: ChannelTopic[] }
 export const curatedChannels: Channel[] = [
   { id: 'UCsBjURrPoezykLs9EqgamOA', title: 'Fireship', description: 'Fast explanations of code, developer tools, and AI.', topics: ['Frontend', 'AI & Agents'] },
   { id: 'UCbRP3c757lWg9M-U7TyEkXA', title: 'Theo - t3.gg', description: 'React, TypeScript, and conversations about the modern web.', topics: ['Frontend'] },

@@ -102,7 +102,7 @@ function FollowedSection({ onOpen, onBrowse }: { onOpen: (v: Video) => void; onB
     </Rail>}
   </div>;
 }
-const homeRowOptions = (id: HomeRowId, topics: Topic[], enabled: boolean) => ({ queryKey: homeRowKey(id, topics), queryFn: ({ signal }: { signal: AbortSignal }) => fetchHomeRow(id, topics, signal), enabled });
+const homeRowOptions = (id: HomeRowId, topics: Topic[], enabled: boolean) => ({ staleTime: 6 * 60 * 60 * 1000, queryKey: homeRowKey(id, topics), queryFn: ({ signal }: { signal: AbortSignal }) => fetchHomeRow(id, topics, signal), enabled });
 function HomeRow({ row, topics, onOpen }: { row: typeof homeRows[number]; topics: Topic[]; onOpen: (v: Video) => void }) {
   const { ref, visible } = useVisible();
   const query = useQuery(homeRowOptions(row.id, topics, visible));

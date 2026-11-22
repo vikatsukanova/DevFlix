@@ -32,15 +32,17 @@ export async function englishChannels(channels: Channel[], signal?: AbortSignal)
   return channels.filter(c => channelLanguage.get(c.id) !== false);
 }
 import { type Channel } from './channels';
-interface ChannelItem { id: string; snippet: { title: string; description: string; thumbnails?: { medium?: { url: string } } }; contentDetails?: { relatedPlaylists: { uploads: string } } }
+import { isPreferredRegion } from './region';
+interface ChannelItem { id: string; snippet: { title: string; description: string; country?: string; thumbnails?: { medium?: { url: string } } }; contentDetails?: { relatedPlaylists: { uploads: string } } }
 export async function channelDetails(ids: string[], signal?: AbortSignal): Promise<Channel[]> {
   if (!ids.length) return [];
   const response = await request<{ items: ChannelItem[] }>('channels', { part: 'snippet,contentDetails', maxResults: '50', id: ids.join(',') }, signal);
-  return response.items.map(c => ({ id: c.id, title: c.snippet.title, description: c.snippet.description, thumbnail: c.snippet.thumbnails?.medium?.url, uploadsId: c.contentDetails?.relatedPlaylists.uploads, topics: [] }));
+  return response.items.map(c => ({ id: c.id, title: c.snippet.title, description: c.snippet.description, thumbnail: c.snippet.thumbnails?.medium?.url, uploadsId: c.contentDetails?.relatedPlaylists.uploads, country: c.snippet.country, topics: [] }));
 }
 export async function searchChannels(term: string, pageToken: string, signal?: AbortSignal) {
   const response = await request<{ items: { id: { channelId: string } }[]; nextPageToken?: string }>('search', { part: 'snippet', type: 'channel', q: term, maxResults: '12', ...(pageToken ? { pageToken } : {}) }, signal);
-  return { channels: await englishChannels(await channelDetails(response.items.map(c => c.id.channelId), signal), signal), nextPageToken: response.nextPageToken };
+  const channels = (await channelDetails(response.items.map(c => c.id.channelId), signal)).filter(c => isPreferredRegion(c.country));
+  return { channels: await englishChannels(channels, signal), nextPageToken: response.nextPageToken };
 }
 const MAX_SUBSCRIPTIONS = 1000;
 interface BrandedChannelItem extends ChannelItem { brandingSettings?: { channel?: { keywords?: string } } }

@@ -37,9 +37,9 @@ export async function search(term: string, pageToken: string, signal?: AbortSign
 }
 export interface VideoLanguage { audio?: string; metadata?: string }
 // Regional English audio tags that are frequently applied to mixed-language audio, so they aren't treated as English.
-const NON_ENGLISH_VARIANTS = ['en-in'];
-const isEnglishCode = (code: string) => /^en(-|$)/i.test(code) && !NON_ENGLISH_VARIANTS.includes(code.toLowerCase());
-/** Share of letters outside the Latin script (e.g. Devanagari, Cyrillic, CJK). */
+const UNRELIABLE_ENGLISH_TAGS = ['en-in'];
+const isEnglishCode = (code: string) => /^en(-|$)/i.test(code) && !UNRELIABLE_ENGLISH_TAGS.includes(code.toLowerCase());
+/** Share of letters outside the Latin script. */
 const nonLatinShare = (text: string) => { const letters = text.match(/\p{L}/gu) ?? []; return letters.length ? letters.filter(c => !/\p{Script=Latin}/u.test(c)).length / letters.length : 0; };
 /**
  * Decides from YouTube's language fields. The spoken (audio) language wins, so an English title over non-English audio is dropped.
@@ -67,7 +67,7 @@ export const daysAgo = (days: number) => new Date(Math.floor((Date.now() - days 
 export interface VideoSearch { q: string; order: 'viewCount' | 'relevance' | 'date'; publishedAfter?: string; videoDuration?: 'short' | 'medium' | 'long'; maxResults?: number }
 /** search.list for embeddable English videos (100 quota units per call). */
 export async function searchVideos({ q, order, publishedAfter, videoDuration, maxResults = 25 }: VideoSearch, signal?: AbortSignal): Promise<Video[]> {
-  const data = await request<{ items: Item[] }>('search', { part: 'snippet', type: 'video', videoEmbeddable: 'true', q, order, relevanceLanguage: 'en', maxResults: String(maxResults), ...(publishedAfter ? { publishedAfter } : {}), ...(videoDuration ? { videoDuration } : {}) }, signal);
+  const data = await request<{ items: Item[] }>('search', { part: 'snippet', type: 'video', videoEmbeddable: 'true', q, order, relevanceLanguage: 'en', regionCode: 'US', maxResults: String(maxResults), ...(publishedAfter ? { publishedAfter } : {}), ...(videoDuration ? { videoDuration } : {}) }, signal);
   return englishOnly(data.items.map(normalize), signal);
 }
 /** Most-viewed embeddable videos for a topic from the last 30 days. */
