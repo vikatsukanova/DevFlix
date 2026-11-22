@@ -14,21 +14,21 @@ afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 const json = (body: unknown) => ({ ok: true, json: async () => body }) as Response;
 const channel = (id: string, title: string): Channel => ({ id, title, description: '', uploadsId: `UU${id.slice(2)}`, topics: [] });
 
-describe('isEnglishChannel', () => {
-  it('needs at least 60% English uploads', () => {
+describe('matchesChannelLanguage', () => {
+  it('needs at least 60% uploads in the chosen language (English by default)', () => {
     const en = { title: 'Lesson', language: { audio: 'en' } };
     const de = { title: 'Lesson', language: { audio: 'de' } };
-    expect(channelApi.isEnglishChannel([en, en, en, de, de])).toBe(true);
-    expect(channelApi.isEnglishChannel([en, en, de, de, de])).toBe(false);
-    expect(channelApi.isEnglishChannel([])).toBe(true);
+    expect(channelApi.matchesChannelLanguage([en, en, en, de, de])).toBe(true);
+    expect(channelApi.matchesChannelLanguage([en, en, de, de, de])).toBe(false);
+    expect(channelApi.matchesChannelLanguage([])).toBe(true);
   });
-  it('treats English-titled uploads with non-English audio as non-English', () => {
-    expect(channelApi.isEnglishChannel(Array.from({ length: 5 }, () => ({ title: 'What is MCP? Completely explained', language: { audio: 'de', metadata: 'en' } })))).toBe(false);
+  it('treats English-titled uploads with other audio as outside the chosen language', () => {
+    expect(channelApi.matchesChannelLanguage(Array.from({ length: 5 }, () => ({ title: 'What is MCP? Completely explained', language: { audio: 'de', metadata: 'en' } })))).toBe(false);
   });
 });
 
-describe('englishChannels', () => {
-  it('drops a channel whose latest uploads are mostly non-English and keeps an English one', async () => {
+describe('channelsInLanguage', () => {
+  it('drops a channel whose latest uploads are mostly in other languages and keeps an English one', async () => {
     const other = channel('UCotherLanguageChannel00', 'Other-language channel');
     const english = channel('UCenglishLanguageChannel', 'English channel');
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
@@ -41,10 +41,10 @@ describe('englishChannels', () => {
       return json({ items: ids.map(id => ({ id, snippet: { defaultAudioLanguage: id.startsWith('h') ? 'de' : 'en' } })) });
     });
     vi.stubGlobal('fetch', fetchMock);
-    expect((await channelApi.englishChannels([other, english])).map(c => c.title)).toEqual(['English channel']);
+    expect((await channelApi.channelsInLanguage([other, english])).map(c => c.title)).toEqual(['English channel']);
     const calls = fetchMock.mock.calls.length;
     // Results are remembered for the session, so a second check costs nothing.
-    expect((await channelApi.englishChannels([other, english])).map(c => c.title)).toEqual(['English channel']);
+    expect((await channelApi.channelsInLanguage([other, english])).map(c => c.title)).toEqual(['English channel']);
     expect(fetchMock.mock.calls.length).toBe(calls);
   });
 });

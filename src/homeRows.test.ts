@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { searchVideos, type Video, type VideoSearch } from './api';
-import { allowedAge, freshSearch, rankHot } from './homeRows';
+import { allowedAge, freshSearch, isOnTopic, rankHot } from './homeRows';
+import { defaultSettings, saveSettings } from './settings';
 
 // Real daysAgo stays in place (it reads the faked clock); only the network call is replaced.
 vi.mock('./api', async importOriginal => ({
@@ -110,5 +111,21 @@ describe('rankHot', () => {
   });
   it('drops videos with unknown views or duration', () => {
     expect(rankHot([video('x', 'No stats', 1)], {}, now)).toEqual([]);
+  });
+});
+
+describe('isOnTopic', () => {
+  // Off-topic by the keyword list (celebrity, NFL) and with no development keywords.
+  const offTopic = video('gossip', 'Celebrity gossip and NFL highlights', 1, 'Weekend recap');
+  afterEach(() => saveSettings(defaultSettings('US')));
+
+  it('rejects an off-topic title when the language is English, because the keyword checks apply', () => {
+    saveSettings({ language: 'en', countries: ['US'], creatorRegion: 'prefer' });
+    expect(isOnTopic(offTopic)).toBe(false);
+  });
+
+  it('accepts the same title when another language is chosen, relying on YouTube categories instead', () => {
+    saveSettings({ language: 'es', countries: ['MX'], creatorRegion: 'prefer' });
+    expect(isOnTopic(offTopic)).toBe(true);
   });
 });

@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { normalize } from './api';
 import { queryKeys } from './queryKeys';
-import { readLibrary, saveProgress, toggleSaved } from './storage';
+import { clearWatching, readLibrary, saveProgress, toggleSaved } from './storage';
 const video = { id: 'abc', title: 'A lesson', channel: 'Creator', thumbnail: 'https://example.com/image.jpg', description: '' };
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 describe('cache identity', () => {
@@ -17,6 +17,15 @@ describe('YouTube normalization', () => {
   });
 });
 describe('local library', () => {
+  it('clears Continue Watching without touching My List', () => {
+    toggleSaved(video);
+    saveProgress(video, 30, 100);
+    clearWatching();
+    const library = readLibrary(localStorage.getItem('devflix-library-v1'));
+    expect(library.watching).toHaveLength(0);
+    expect(library.saved).toContainEqual(video);
+    toggleSaved(video);
+  });
   it('recovers from malformed or incompatible storage', () => {
     expect(readLibrary('{broken')).toEqual({ saved: [], watching: [] });
     expect(readLibrary('null')).toEqual({ saved: [], watching: [] });
