@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import Onboarding from './Onboarding';
 import App from './App';
@@ -25,7 +25,7 @@ it('validates stored preferences and maps all supported topics', () => {
   expect(readPreferences('bad')).toEqual({ completed: false, interests: [] });
   expect(readPreferences(JSON.stringify({ completed: true, interests: ['Frontend', 'Frontend', 'All topics', 'unknown'] }))).toEqual({ completed: true, interests: ['Frontend'] });
 });
-it('completes onboarding and personalizes the homepage, while keeping Discover available', async () => {
+it('completes onboarding and personalizes the homepage without a Discover tab', async () => {
   wrapper(<App/>);
   fireEvent.click(screen.getByRole('button', { name: /React & Frontend/ }));
   fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
@@ -36,10 +36,10 @@ it('completes onboarding and personalizes the homepage, while keeping Discover a
   expect(screen.getByRole('heading', { name: 'New from your channels' })).toBeTruthy();
   expect(screen.getByRole('heading', { name: 'Hot this week' })).toBeTruthy();
   expect(screen.getByRole('heading', { name: 'Quick explainers' })).toBeTruthy();
-  expect(screen.queryByRole('heading', { name: 'Trending in Frontend' })).toBeNull();
-  fireEvent.click(screen.getByRole('button', { name: /^Discover$/ }));
-  expect(screen.getByRole('heading', { name: 'Trending in Backend' })).toBeTruthy();
-  expect(screen.getByRole('heading', { name: 'Trending in Frontend' })).toBeTruthy();
+  expect(screen.queryByRole('heading', { name: /^Trending in/ })).toBeNull();
+  const nav = screen.getByRole('navigation', { name: 'Main navigation' });
+  expect(within(nav).queryByRole('button', { name: /discover/i })).toBeNull();
+  expect(within(nav).getAllByRole('button').map(b => b.textContent?.replace(/\s+/g, ' ').trim())).toEqual(['For you', 'Channels', 'Following', 'My List 0']);
 });
 it('skip discards drafts, preserves follows, and does not repeat on a returning visit', () => {
   setFollowing([curatedChannels[1]]);
