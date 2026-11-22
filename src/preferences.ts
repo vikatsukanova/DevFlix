@@ -1,6 +1,5 @@
 import { useSyncExternalStore } from 'react';
 import { channelTopics, type ChannelTopic } from './channels';
-import type { Category } from './rows';
 export type Interest = Exclude<ChannelTopic, 'All topics'>;
 export interface Preferences { completed: boolean; interests: Interest[] }
 export const preferenceKey = 'devflix-preferences-v1';
@@ -24,5 +23,3 @@ window.addEventListener('storage', event => {
   listeners.forEach(fn => fn());
 });
 export const usePreferences = () => useSyncExternalStore(fn => { listeners.add(fn); return () => { listeners.delete(fn); }; }, () => state);
-const topicCategory: Record<Interest, Category> = { 'AI & Agents': 'AI & ML', Frontend: 'Web development', Backend: 'Backend', 'System Design': 'System design', DevOps: 'DevOps' };
-export function matchesInterests(category: Category, interests: Interest[]) { return interests.length === 0 || interests.some(t => topicCategory[t] === category); }

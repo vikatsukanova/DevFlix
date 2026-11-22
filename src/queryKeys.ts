@@ -6,4 +6,6 @@ export const queryKeys = {
   playlist: (id: string) => ['youtube', 'playlist', id] as const,
   video: (id: string) => ['youtube', 'video', id] as const,
   search: (term: string) => ['youtube', 'search', term.trim().toLowerCase()] as const,
+  trending: (topic: string) => ['youtube', 'trending', topic] as const,
+  trendingCreators: (ids: string[]) => ['youtube', 'trending-creators', [...ids].sort().join(',')] as const,
 };
