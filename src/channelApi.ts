@@ -1,4 +1,4 @@
-import { request, playlist, type Video } from './api';
+import { request, playlist, ApiError, type Video } from './api';
 import { type Channel } from './channels';
 interface ChannelItem { id: string; snippet: { title: string; description: string; thumbnails?: { medium?: { url: string } } }; contentDetails?: { relatedPlaylists: { uploads: string } } }
 export async function channelDetails(ids: string[], signal?: AbortSignal): Promise<Channel[]> {
@@ -33,4 +33,14 @@ export async function channelUploads(channel: Channel, signal?: AbortSignal) {
 }
 export function mergeFeed(groups: Video[][]): Video[] {
   return [...new Map(groups.flat().map(v => [v.id, v])).values()].sort((a, b) => (Date.parse(b.publishedAt ?? '') || 0) - (Date.parse(a.publishedAt ?? '') || 0));
+}
+/** Titles of a channel's most recent uploads (1 quota unit). Returns [] when the channel has no uploads playlist. */
+export async function recentUploadTitles(uploadsId: string, accessToken: string, signal?: AbortSignal): Promise<string[]> {
+  try {
+    const data = await request<{ items: { snippet: { title: string } }[] }>('playlistItems', { part: 'snippet', maxResults: '10', playlistId: uploadsId }, signal, accessToken);
+    return data.items.map(i => i.snippet.title).filter(t => t !== 'Private video' && t !== 'Deleted video');
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) return [];
+    throw error;
+  }
 }
