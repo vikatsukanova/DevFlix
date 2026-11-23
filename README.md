@@ -132,3 +132,15 @@ Results are cached in the browser to keep this down. Home rows refresh at most e
 ## Tests
 
 `npm test` runs 127 tests with Vitest and Testing Library. They cover onboarding, the feeds and their filters, settings, the import, and local storage. They mock the network, so they don't use your quota or check live YouTube data.
+
+## Workflow and deploys
+
+All changes go through pull requests to `main`.
+
+1. Branch from `main`, commit, and open a PR.
+2. **CI** (`.github/workflows/ci.yml`) runs `npm test` and `npm run build` on every PR and on every push to `main`. The PR can only merge once it passes.
+3. After CI passes on `main`, **Deploy** (`.github/workflows/deploy.yml`) builds the site and publishes it to GitHub Pages. You can also run it by hand from the Actions tab.
+
+Dependabot opens weekly PRs for npm updates and monthly ones for GitHub Actions.
+
+Deploys read `VITE_YT_API_KEY` and `VITE_GOOGLE_CLIENT_ID` from the repository's Actions secrets. These end up in the public bundle, so restrict the API key to your Pages URL, and add the Pages URL as an authorized JavaScript origin on the OAuth client.
