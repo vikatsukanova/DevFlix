@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react';
+import { writeLocal } from './localData';
 
 /** 'any' turns the language filter off. Otherwise an ISO 639-1 code such as 'en'. */
 export type LanguageSetting = string;
@@ -60,7 +61,7 @@ const listeners = new Set<() => void>();
 export const getSettings = () => state;
 export function saveSettings(next: Settings) {
   state = readSettings(JSON.stringify(next));
-  try { localStorage.setItem(key, JSON.stringify(state)); } catch { /* session fallback */ }
+  writeLocal(key, state);
   listeners.forEach(fn => fn());
 }
 if (typeof window !== 'undefined') window.addEventListener('storage', event => { if (event.key === key || event.key === null) { try { state = readSettings(localStorage.getItem(key)); } catch { state = defaultSettings(); } listeners.forEach(fn => fn()); } });

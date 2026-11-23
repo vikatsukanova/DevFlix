@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react';
+import { writeLocal } from './localData';
 import type { Video } from './api';
 export interface Progress { video: Video; seconds: number; duration: number; updatedAt: number }
 interface Library { saved: Video[]; watching: Progress[] }
@@ -14,7 +15,7 @@ export function readLibrary(raw: string | null): Library {
 try { state = readLibrary(localStorage.getItem(key)); } catch { /* storage unavailable */ }
 const listeners = new Set<() => void>();
 function publish() { listeners.forEach(fn => fn()); }
-function commit(next: Library) { state = next; try { localStorage.setItem(key, JSON.stringify(state)); } catch { /* session-only fallback */ } publish(); }
+function commit(next: Library) { state = next; writeLocal(key, state); publish(); }
 window.addEventListener('storage', event => { if (event.key === key) { state = readLibrary(event.newValue); publish(); } });
 export const toggleSaved = (video: Video) => commit({ ...state, saved: state.saved.some(v => v.id === video.id) ? state.saved.filter(v => v.id !== video.id) : [video, ...state.saved].slice(0, 200) });
 export const clearWatching = () => commit({ ...state, watching: [] });
