@@ -139,8 +139,8 @@ All changes go through pull requests to `main`.
 
 1. Branch from `main`, commit, and open a PR.
 2. **CI** (`.github/workflows/ci.yml`) runs `npm test` and `npm run build` on every PR and on every push to `main`. The PR can only merge once it passes.
-3. **Vercel** builds a preview deploy for every PR and deploys `main` to production. It picks up the Vite settings automatically.
+3. After CI passes on `main`, **Deploy** (`.github/workflows/deploy.yml`) builds the site and publishes it to GitHub Pages. You can also run it by hand from the Actions tab.
 
 Dependabot opens weekly PRs for npm updates and monthly ones for GitHub Actions.
 
-To connect Vercel: import the repo at vercel.com/new, then add `VITE_YT_API_KEY` and `VITE_GOOGLE_CLIENT_ID` under the project's Environment Variables. These end up in the public bundle, so restrict the API key to your Vercel domains, and add those domains as authorized JavaScript origins on the OAuth client.
+Deploys read `VITE_YT_API_KEY` and `VITE_GOOGLE_CLIENT_ID` from the repository's Actions secrets. These end up in the public bundle, so restrict the API key to your Pages URL, and add the Pages URL as an authorized JavaScript origin on the OAuth client.
