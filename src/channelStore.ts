@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react';
+import { writeLocal } from './localData';
 import type { Channel } from './channels';
 const key = 'devflix-following-v1';
 export function readFollowing(raw: string | null): Channel[] {
@@ -15,7 +16,7 @@ function notify() { listeners.forEach(fn => fn()); }
 window.addEventListener('storage', event => { if (event.key === key || event.key === null) { try { following = readFollowing(localStorage.getItem(key)); } catch { following = []; } notify(); } });
 export function setFollowing(channels: Channel[]) {
   following = readFollowing(JSON.stringify(channels));
-  try { localStorage.setItem(key, JSON.stringify(following)); } catch { /* session fallback */ }
+  writeLocal(key, following);
   notify();
 }
 export function toggleFollow(channel: Channel) {

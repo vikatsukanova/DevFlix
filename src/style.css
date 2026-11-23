@@ -82,3 +82,11 @@ button.avatar{cursor:pointer;padding:0;font-family:inherit}button.avatar:hover{b
 .rail-controls{align-items:center}
 .rail-action{margin-right:8px;font-size:12px}
 .rail-confirm{display:inline-flex;align-items:center;gap:10px;font-size:12px;color:#96909f;margin-right:4px}
+button.avatar{overflow:hidden}button.avatar img{width:100%;height:100%;object-fit:cover}
+.header-sign-in{padding:8px 14px;font-size:11px;white-space:nowrap}
+@media(max-width:800px){header .header-sign-in{order:2}}
+.account-section{padding-bottom:18px;border-bottom:1px solid #2d2736}
+.account-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.account-photo{width:38px;height:38px;border-radius:50%;object-fit:cover;background:#30293f;color:#dacaff;display:grid;place-items:center;font-size:13px;flex-shrink:0}
+.account-name{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}.account-name strong{font-size:13px;overflow-wrap:anywhere}.account-name small{font-size:11px;color:#96909f;overflow-wrap:anywhere}
+.account-pitch{font-size:12px;color:#a89db4;line-height:1.6;margin:0;flex:1 1 220px}

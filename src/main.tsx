@@ -1,12 +1,13 @@
-import React from 'react';
-import ReactDOM from 'react-dom/client';
-import { QueryClient } from '@tanstack/react-query';
-import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
-import { createSyncStoragePersister } from '@tanstack/query-sync-storage-persister';
-import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
-import { ApiError, isDemo } from './api';
-import App from './App';
+import { startAccount } from './account';
 import './style.css';
+
+// Load a signed-in person's account before any store reads localStorage, so the app opens with their data.
+// Everything else is imported afterwards for that reason.
+await startAccount();
+const [{ default: React }, { default: ReactDOM }, { QueryClient }, { PersistQueryClientProvider }, { createSyncStoragePersister }, { ReactQueryDevtools }, { ApiError, isDemo }, { default: App }] = await Promise.all([
+  import('react'), import('react-dom/client'), import('@tanstack/react-query'), import('@tanstack/react-query-persist-client'),
+  import('@tanstack/query-sync-storage-persister'), import('@tanstack/react-query-devtools'), import('./api'), import('./App'),
+]);
 const DAY = 24 * 60 * 60 * 1000;
 const client = new QueryClient({ defaultOptions: { queries: { staleTime: 60 * 60 * 1000, gcTime: DAY, refetchOnWindowFocus: false, retry: (count, error) => !(error instanceof ApiError && error.status < 500) && count < 1 } } });
 let storage: Storage | undefined;
