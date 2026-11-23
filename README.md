@@ -18,6 +18,7 @@ npm run dev
 | --- | --- | --- |
 | `VITE_YT_API_KEY` | Yes, for live data | YouTube Data API v3 key. Without it you get a labelled preview catalog. |
 | `VITE_GOOGLE_CLIENT_ID` | No | Turns on **Import from YouTube** during setup. |
+| `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY` | No | Turns on **Sign in**, so lists and settings follow you across devices. |
 
 Vite variables are visible to anyone using the app, so restrict the API key to the YouTube Data API and your site's URLs in Google Cloud. Restart `npm run dev` after editing `.env.local`.
 
@@ -35,6 +36,7 @@ Other commands: `npm test`, `npm run build`, `npm run preview`.
 - **My List** and **Continue Watching**, saved in your browser. Continue Watching has a Clear button.
 - **Player:** opens in a modal, with an **About the creator** panel showing subscribers, channel age and a short bio.
 - **Settings** (avatar, top right): language and region preferences.
+- **Accounts (optional):** sign in with Google to keep everything above on every device. Without signing in, it all saves in your browser.
 
 ### Discovery rows
 
@@ -87,6 +89,25 @@ To tune these, edit:
 
 Settings are saved in your browser. Changing them reloads the feeds.
 
+## Accounts (optional)
+
+Signing in saves your topics, followed channels, imported subscriptions, My List, Continue Watching and settings to your account. Nobody has to sign in: without an account, everything is saved in the browser as before.
+
+- **First sign-in:** what's saved in this browser is uploaded to your new account.
+- **Later sign-ins:** your account's data replaces this browser's copy, so every device shows the same thing.
+- **While signed in:** changes upload within a few seconds.
+- **Signing out** clears this browser's copy, so a shared computer keeps nothing of yours.
+
+Accounts use [Supabase](https://supabase.com) (free tier is plenty) for Google sign-in and one database table. There is no server to run. To turn it on:
+
+1. Create a Supabase project. In **SQL Editor**, run `supabase/schema.sql`. It creates the `profiles` table with row-level security, so each person can only read and write their own row.
+2. In Google Cloud, open your OAuth client (the one from the YouTube import works) and add `https://<your-project>.supabase.co/auth/v1/callback` as an authorized redirect URI.
+3. In Supabase, go to **Authentication → Sign In / Providers → Google**, turn it on, and paste the OAuth client ID and secret.
+4. In **Authentication → URL Configuration**, set the Site URL to your deployed site and add `http://localhost:5173/**` to the redirect URLs.
+5. Put the project URL and publishable key (**Project Settings → API Keys**) in `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY`.
+
+The publishable key is meant to be public; row-level security is what protects the data.
+
 ## Import from YouTube (optional)
 
 Reads your subscriptions (read-only) and pre-selects the AI and dev channels for you to review. Nothing on YouTube changes, and access is revoked right after the import.
@@ -124,6 +145,7 @@ Results are cached in the browser to keep this down. Home rows refresh at most e
 | `creators.ts` | Channel stats, Wikipedia bios, formatting |
 | `classify.ts` | Topic, relevance and clickbait checks |
 | `settings.ts` | Saved settings |
+| `account.ts`, `localData.ts` | Optional sign-in and syncing saved data to an account |
 | `region.ts` | Region check |
 | `youtubeAuth.ts` | Google sign-in for the import |
 | `youtubeImport.ts` | Reads and sorts subscriptions |
@@ -131,7 +153,7 @@ Results are cached in the browser to keep this down. Home rows refresh at most e
 
 ## Tests
 
-`npm test` runs 127 tests with Vitest and Testing Library. They cover onboarding, the feeds and their filters, settings, the import, and local storage. They mock the network, so they don't use your quota or check live YouTube data.
+`npm test` runs 137 tests with Vitest and Testing Library. They cover onboarding, the feeds and their filters, settings, the import, accounts, and local storage. They mock the network, so they don't use your quota or check live YouTube data.
 
 ## Workflow and deploys
 
@@ -143,4 +165,4 @@ All changes go through pull requests to `main`.
 
 Dependabot opens weekly PRs for npm updates and monthly ones for GitHub Actions.
 
-Deploys read `VITE_YT_API_KEY` and `VITE_GOOGLE_CLIENT_ID` from the repository's Actions secrets. These end up in the public bundle, so restrict the API key to your Pages URL, and add the Pages URL as an authorized JavaScript origin on the OAuth client.
+Deploys read `VITE_YT_API_KEY`, `VITE_GOOGLE_CLIENT_ID`, `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` from the repository's Actions secrets. These end up in the public bundle, so restrict the API key to your Pages URL, and add the Pages URL as an authorized JavaScript origin on the OAuth client.

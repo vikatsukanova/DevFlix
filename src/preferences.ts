@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react';
+import { writeLocal } from './localData';
 import { channelTopics, type ChannelTopic } from './channels';
 export type Interest = Exclude<ChannelTopic, 'All topics'>;
 export interface Preferences { completed: boolean; interests: Interest[] }
@@ -14,7 +15,7 @@ try { state = readPreferences(localStorage.getItem(preferenceKey)); } catch { /*
 const listeners = new Set<() => void>();
 export function savePreferences(interests: Interest[]) {
   state = { completed: true, interests: [...interests] };
-  try { localStorage.setItem(preferenceKey, JSON.stringify(state)); } catch { /* session fallback */ }
+  writeLocal(preferenceKey, state);
   listeners.forEach(fn => fn());
 }
 window.addEventListener('storage', event => {
