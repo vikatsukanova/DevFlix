@@ -16,6 +16,44 @@ describe('YouTube normalization', () => {
     expect(normalize({ id: 'playlist-entry', snippet: { title: 'Lesson', channelTitle: 'Curator', videoOwnerChannelTitle: 'Teacher', description: '', resourceId: { videoId: 'video-id' }, thumbnails: { high: { url: 'image' } } } })).toMatchObject({ id: 'video-id', channel: 'Teacher', thumbnail: 'image' });
   });
 });
+describe('YouTube request routing', () => {
+  afterEach(() => { vi.unstubAllEnvs(); vi.resetModules(); });
+
+  it('routes through relative same-origin VITE_YT_PROXY_URL without sending an API key', async () => {
+    vi.stubEnv('VITE_YT_PROXY_URL', '/api/youtube/');
+    vi.stubEnv('VITE_YT_API_KEY', 'should-not-be-sent');
+    vi.resetModules();
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ items: [] }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const { isDemo, request } = await import('./api');
+
+    expect(isDemo).toBe(false);
+    await request('search', { part: 'snippet', q: 'react' }, undefined, 'oauth-token');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [calledUrl, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const parsed = new URL(calledUrl, 'https://devflix.workers.dev');
+    expect(calledUrl.startsWith('/api/youtube/search?')).toBe(true);
+    expect(parsed.searchParams.get('q')).toBe('react');
+    expect(parsed.searchParams.get('key')).toBeNull();
+    expect(init.headers).toEqual({ Authorization: 'Bearer oauth-token' });
+  });
+
+  it('falls back to YouTube directly when only VITE_YT_API_KEY is set', async () => {
+    vi.stubEnv('VITE_YT_PROXY_URL', '');
+    vi.stubEnv('VITE_YT_API_KEY', 'local-dev-key');
+    vi.resetModules();
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ items: [] }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const { isDemo, request } = await import('./api');
+
+    expect(isDemo).toBe(false);
+    await request('videos', { part: 'snippet', id: 'abc' });
+    const [calledUrl] = fetchMock.mock.calls[0] as [string];
+    const parsed = new URL(calledUrl);
+    expect(parsed.origin + parsed.pathname).toBe('https://www.googleapis.com/youtube/v3/videos');
+    expect(parsed.searchParams.get('key')).toBe('local-dev-key');
+  });
+});
 describe('local library', () => {
   it('clears Continue Watching without touching My List', () => {
     toggleSaved(video);

@@ -4,12 +4,16 @@ import { getSettings } from './settings';
 export interface Video { id: string; title: string; channel: string; channelId?: string; description: string; thumbnail: string; duration?: string; publishedAt?: string }
 interface Snippet { publishedAt?: string; title: string; channelTitle: string; channelId?: string; videoOwnerChannelId?: string; videoOwnerChannelTitle?: string; description: string; thumbnails: Record<string, { url: string }>; resourceId?: { videoId: string } }
 interface Item { id: string | { videoId: string }; snippet: Snippet; contentDetails?: { duration?: string; videoPublishedAt?: string }; status?: { embeddable: boolean } }
-export const isDemo = !import.meta.env.VITE_YT_API_KEY;
+const hasProxy = !!import.meta.env.VITE_YT_PROXY_URL;
+const proxyUrl = hasProxy ? (import.meta.env.VITE_YT_PROXY_URL as string).replace(/\/+$/, '') : '';
+const apiKey = hasProxy ? '' : (import.meta.env.VITE_YT_API_KEY ?? '');
+export const isDemo = !hasProxy && !apiKey;
 export class ApiError extends Error { constructor(message: string, public status: number) { super(message); } }
 export async function request<T>(endpoint: string, params: Record<string, string>, signal?: AbortSignal, accessToken?: string): Promise<T> {
-  if (isDemo) throw new ApiError('Add VITE_YT_API_KEY to .env.local to connect YouTube.', 400);
-  const url = new URL(`https://www.googleapis.com/youtube/v3/${endpoint}`);
-  url.search = new URLSearchParams({ ...params, key: import.meta.env.VITE_YT_API_KEY }).toString();
+  if (isDemo) throw new ApiError('Set VITE_YT_PROXY_URL or VITE_YT_API_KEY in .env.local to connect YouTube.', 400);
+  const base = hasProxy ? `${proxyUrl}/${endpoint}` : `https://www.googleapis.com/youtube/v3/${endpoint}`;
+  const query = new URLSearchParams(hasProxy ? params : { ...params, key: apiKey }).toString();
+  const url = query ? `${base}?${query}` : base;
   const response = await fetch(url, { signal, headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined });
   if (response.status === 401 && accessToken) throw new ApiError('Your YouTube sign-in expired. Please import again.', 401);
   if (!response.ok) {

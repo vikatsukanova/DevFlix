@@ -16,11 +16,12 @@ npm run dev
 
 | Variable | Required | What it's for |
 | --- | --- | --- |
-| `VITE_YT_API_KEY` | Yes, for live data | YouTube Data API v3 key. Without it you get a labelled preview catalog. |
+| `VITE_YT_PROXY_URL` | Recommended for public deploys | URL of the Cloudflare Worker in `proxy/` so your YouTube API key never ships in browser JS. |
+| `VITE_YT_API_KEY` | Local dev fallback | YouTube Data API v3 key for running locally without the proxy. Without either variable you get a labelled preview catalog. |
 | `VITE_GOOGLE_CLIENT_ID` | No | Turns on **Import from YouTube** during setup. |
 | `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY` | No | Turns on **Sign in**, so lists and settings follow you across devices. |
 
-Vite variables are visible to anyone using the app, so restrict the API key to the YouTube Data API and your site's URLs in Google Cloud. Restart `npm run dev` after editing `.env.local`.
+Vite variables are visible in the built bundle, so public deploys use `VITE_YT_PROXY_URL` instead of `VITE_YT_API_KEY`. Restart `npm run dev` after editing `.env.local`.
 
 Other commands: `npm test`, `npm run build`, `npm run preview`.
 
@@ -130,7 +131,35 @@ The default quota is 10,000 units a day. Searches cost 100 units. Everything els
 | Each extra page of search results | ~100 units |
 | Subscription import | up to ~500 units |
 
-Results are cached in the browser to keep this down. Home rows refresh at most every 6 hours, and other data every hour. If the quota runs out, rows show an error until it resets at midnight Pacific time.
+Results are cached in the browser (and at the Cloudflare edge when using the proxy) to keep this down. Home rows refresh at most every 6 hours, and other data every hour. If the quota runs out, rows show an error until it resets at midnight Pacific time.
+
+## Standalone deploy on Cloudflare Workers (free tier)
+
+DevFlix deploys as a single standalone app on **Cloudflare Workers** (`wrangler.toml`):
+
+- Static SPA files (`dist/`) are served directly from Cloudflare's edge (free, unlimited requests).
+- `/api/youtube/*` runs through `proxy/worker.ts` on the same domain (no CORS setup needed, works with private GitHub repos).
+- `YT_API_KEY` stays strictly server-side in Cloudflare Worker secrets—never bundled into browser JS.
+- Public YouTube responses are edge-cached across all visitors (6 hours for `search`, 1 hour for `videos`/`channels`/`playlistItems`; authenticated requests and errors are never cached).
+
+### Option A: Connect Git in Cloudflare Dashboard (easiest, auto-deploys + PR previews)
+
+1. In **Cloudflare Dashboard → Compute (Workers) → Workers & Pages → Create → Import a repository**, select this repo (private or public).
+2. Set:
+   - **Build command:** `npm run build:cf`
+   - **Deploy command:** `npx wrangler deploy`
+3. Under **Build variables** (optional, public): add `VITE_GOOGLE_CLIENT_ID`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`.
+4. Under **Runtime Variables and Secrets**: add `YT_API_KEY` as a **Secret** (restricted to **YouTube Data API v3** only in Google Cloud, with no billing account required).
+
+### Option B: Deploy from your terminal
+
+```sh
+npx wrangler login
+npx wrangler secret put YT_API_KEY   # paste your YouTube Data API v3 key
+npx wrangler deploy                  # runs npm run build:cf and deploys dist/ + /api/youtube/*
+```
+
+Once live at `https://devflix.<your-subdomain>.workers.dev` (or your custom domain), add that URL as an **Authorized JavaScript origin** on your Google OAuth client and as the **Site URL** in Supabase Authentication if you enable accounts.
 
 ## Project structure
 
@@ -139,7 +168,7 @@ Results are cached in the browser to keep this down. Home rows refresh at most e
 | `App.tsx` | Layout, rows, player and settings dialog |
 | `Onboarding.tsx` | Topic and creator setup |
 | `ChannelsPage.tsx` | Channel browsing and Following |
-| `api.ts` | YouTube requests, language and category filters |
+| `api.ts` | YouTube requests (same-origin `/api/youtube` proxy or local key), language and category filters |
 | `homeRows.ts` | Discovery rows |
 | `trending.ts` | Trending creators, followed feed, infinite-scroll helper |
 | `creators.ts` | Channel stats, Wikipedia bios, formatting |
@@ -150,10 +179,11 @@ Results are cached in the browser to keep this down. Home rows refresh at most e
 | `youtubeAuth.ts` | Google sign-in for the import |
 | `youtubeImport.ts` | Reads and sorts subscriptions |
 | `*Store.ts`, `storage.ts`, `preferences.ts` | Local data |
+| `wrangler.toml`, `proxy/worker.ts` | Standalone Cloudflare Worker serving static assets + `/api/youtube/*` proxy and edge cache |
 
 ## Tests
 
-`npm test` runs 137 tests with Vitest and Testing Library. They cover onboarding, the feeds and their filters, settings, the import, accounts, and local storage. They mock the network, so they don't use your quota or check live YouTube data.
+`npm test` runs 150 tests with Vitest and Testing Library. They cover the proxy worker, onboarding, the feeds and their filters, settings, the import, accounts, and local storage. They mock the network, so they don't use your quota or check live YouTube data.
 
 ## Workflow and deploys
 
@@ -161,8 +191,6 @@ All changes go through pull requests to `main`.
 
 1. Branch from `main`, commit, and open a PR.
 2. **CI** (`.github/workflows/ci.yml`) runs `npm test` and `npm run build` on every PR and on every push to `main`. The PR can only merge once it passes.
-3. After CI passes on `main`, **Deploy** (`.github/workflows/deploy.yml`) builds the site and publishes it to GitHub Pages. You can also run it by hand from the Actions tab.
+3. **Deploy** happens either automatically via Cloudflare's Git integration, or via `.github/workflows/deploy.yml` after CI passes on `main` when `CLOUDFLARE_API_TOKEN` is set in GitHub Actions secrets.
 
 Dependabot opens weekly PRs for npm updates and monthly ones for GitHub Actions.
-
-Deploys read `VITE_YT_API_KEY`, `VITE_GOOGLE_CLIENT_ID`, `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` from the repository's Actions secrets. These end up in the public bundle, so restrict the API key to your Pages URL, and add the Pages URL as an authorized JavaScript origin on the OAuth client.
