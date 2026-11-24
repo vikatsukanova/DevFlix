@@ -1,6 +1,11 @@
+export interface AssetsBinding {
+  fetch(request: Request): Promise<Response>;
+}
+
 export interface WorkerEnv {
   YT_API_KEY?: string;
   ALLOWED_ORIGINS?: string;
+  ASSETS?: AssetsBinding;
 }
 
 export interface ExecutionContextLike {
@@ -19,7 +24,6 @@ export interface ProxyDeps {
 
 const YOUTUBE_API_BASE = 'https://www.googleapis.com/youtube/v3';
 const DEFAULT_ALLOWED_ORIGINS = [
-  'https://vikatsukanova.github.io',
   'http://localhost:5173',
   'http://127.0.0.1:5173',
 ];
@@ -99,6 +103,40 @@ function getDefaultCache(): CacheLike | undefined {
   return globalCaches?.default;
 }
 
+/**
+ * Checks whether the request comes from this app's own origin (same-origin browser fetch,
+ * which typically sends Sec-Fetch-Site: same-origin or a matching Referer without an Origin header)
+ * or an explicitly allowed cross-origin caller.
+ */
+function checkOrigin(request: Request, requestOrigin: string, allowedOrigins: Set<string>): { allowed: boolean; corsOrigin?: string } {
+  const origin = request.headers.get('Origin')?.replace(/\/+$/, '') ?? '';
+  if (origin) {
+    if (origin === requestOrigin || allowedOrigins.has(origin)) {
+      return { allowed: true, corsOrigin: origin };
+    }
+    return { allowed: false };
+  }
+
+  const fetchSite = request.headers.get('Sec-Fetch-Site')?.toLowerCase();
+  if (fetchSite === 'same-origin') {
+    return { allowed: true };
+  }
+
+  const referer = request.headers.get('Referer');
+  if (referer) {
+    try {
+      const refOrigin = new URL(referer).origin;
+      if (refOrigin === requestOrigin || allowedOrigins.has(refOrigin)) {
+        return { allowed: true };
+      }
+    } catch {
+      return { allowed: false };
+    }
+  }
+
+  return { allowed: false };
+}
+
 export async function handleRequest(
   request: Request,
   env: WorkerEnv,
@@ -106,42 +144,48 @@ export async function handleRequest(
   deps: ProxyDeps = {},
 ): Promise<Response> {
   const url = new URL(request.url);
-  const endpoint = url.pathname.replace(/^\/+|\/+$/g, '');
-  const allowedOrigins = parseAllowedOrigins(env.ALLOWED_ORIGINS);
-  const origin = request.headers.get('Origin')?.replace(/\/+$/, '') ?? '';
-  const originAllowed = origin !== '' && allowedOrigins.has(origin);
+  const path = url.pathname.replace(/\/+$/, '') || '/';
 
-  if (endpoint === 'health' && request.method === 'GET') {
-    return jsonResponse({ ok: true }, 200, originAllowed ? corsHeaders(origin) : {});
+  // Non-API routes fall through to static SPA assets when deployed as a standalone Worker.
+  if (!path.startsWith('/api/')) {
+    if (env.ASSETS) return env.ASSETS.fetch(request);
+    return jsonResponse({ error: { message: 'Not found.' } }, 404);
   }
 
-  if (!originAllowed) {
+  const allowedOrigins = parseAllowedOrigins(env.ALLOWED_ORIGINS);
+  const { allowed, corsOrigin } = checkOrigin(request, url.origin, allowedOrigins);
+  const responseCors: Record<string, string> = corsOrigin ? corsHeaders(corsOrigin) : { Vary: 'Origin' };
+
+  if (path === '/api/health' && request.method === 'GET') {
+    return jsonResponse({ ok: true }, 200, corsOrigin ? corsHeaders(corsOrigin) : {});
+  }
+
+  if (!allowed) {
     return jsonResponse({ error: { message: 'Origin not allowed.' } }, 403);
   }
 
-  const cors = corsHeaders(origin);
-
   if (request.method === 'OPTIONS') {
-    return new Response(null, { status: 204, headers: cors });
+    return new Response(null, { status: 204, headers: responseCors });
   }
 
   if (request.method !== 'GET') {
-    return jsonResponse({ error: { message: 'Method not allowed.' } }, 405, cors);
+    return jsonResponse({ error: { message: 'Method not allowed.' } }, 405, responseCors);
   }
 
+  const endpoint = path.startsWith('/api/youtube/') ? path.slice('/api/youtube/'.length) : '';
   if (!ALLOWED_ENDPOINTS.has(endpoint)) {
-    return jsonResponse({ error: { message: 'Endpoint not found.' } }, 404, cors);
+    return jsonResponse({ error: { message: 'Endpoint not found.' } }, 404, responseCors);
   }
 
   if (!env.YT_API_KEY) {
-    return jsonResponse({ error: { message: 'Proxy is not configured.' } }, 500, cors);
+    return jsonResponse({ error: { message: 'Proxy is not configured.' } }, 500, responseCors);
   }
 
   const rawAuth = request.headers.get('Authorization')?.trim() ?? '';
   const bearerAuth = /^Bearer\s+\S+$/i.test(rawAuth) ? rawAuth : '';
 
   if (endpoint === 'subscriptions' && !bearerAuth) {
-    return jsonResponse({ error: { message: 'Authorization required.' } }, 401, cors);
+    return jsonResponse({ error: { message: 'Authorization required.' } }, 401, responseCors);
   }
 
   const cleanParams = sanitizeParams(url.searchParams);
@@ -155,7 +199,7 @@ export async function handleRequest(
     const cached = await cache.match(cacheRequest);
     if (cached) {
       const headers = new Headers(cached.headers);
-      for (const [k, v] of Object.entries(cors)) headers.set(k, v);
+      for (const [k, v] of Object.entries(responseCors)) headers.set(k, v);
       headers.set('X-Cache', 'HIT');
       return new Response(cached.body, { status: cached.status, headers });
     }
@@ -184,7 +228,7 @@ export async function handleRequest(
     }
     return new Response(body, {
       status: upstream.status,
-      headers: { ...cacheHeaders, ...cors, 'X-Cache': 'MISS' },
+      headers: { ...cacheHeaders, ...responseCors, 'X-Cache': 'MISS' },
     });
   }
 
@@ -193,7 +237,7 @@ export async function handleRequest(
     headers: {
       'Content-Type': contentType,
       'Cache-Control': bearerAuth ? 'private, no-store' : 'no-store',
-      ...cors,
+      ...responseCors,
     },
   });
 }

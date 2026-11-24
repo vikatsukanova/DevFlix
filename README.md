@@ -133,20 +133,33 @@ The default quota is 10,000 units a day. Searches cost 100 units. Everything els
 
 Results are cached in the browser (and at the Cloudflare edge when using the proxy) to keep this down. Home rows refresh at most every 6 hours, and other data every hour. If the quota runs out, rows show an error until it resets at midnight Pacific time.
 
-## YouTube proxy (recommended for public deploys)
+## Standalone deploy on Cloudflare Workers (free tier)
 
-`proxy/worker.ts` is a zero-dependency Cloudflare Worker that keeps `YT_API_KEY` server-side, restricts requests to DevFlix's origins and the five YouTube endpoints the app uses, strips unknown query parameters, and caches public responses at the edge (6 hours for `search`, 1 hour for `videos`/`channels`/`playlistItems`; authenticated requests are never cached).
+DevFlix deploys as a single standalone app on **Cloudflare Workers** (`wrangler.toml`):
 
-To deploy it on Cloudflare's free tier:
+- Static SPA files (`dist/`) are served directly from Cloudflare's edge (free, unlimited requests).
+- `/api/youtube/*` runs through `proxy/worker.ts` on the same domain (no CORS setup needed, works with private GitHub repos).
+- `YT_API_KEY` stays strictly server-side in Cloudflare Worker secrets—never bundled into browser JS.
+- Public YouTube responses are edge-cached across all visitors (6 hours for `search`, 1 hour for `videos`/`channels`/`playlistItems`; authenticated requests and errors are never cached).
+
+### Option A: Connect Git in Cloudflare Dashboard (easiest, auto-deploys + PR previews)
+
+1. In **Cloudflare Dashboard → Compute (Workers) → Workers & Pages → Create → Import a repository**, select this repo (private or public).
+2. Set:
+   - **Build command:** `npm run build:cf`
+   - **Deploy command:** `npx wrangler deploy`
+3. Under **Build variables** (optional, public): add `VITE_GOOGLE_CLIENT_ID`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`.
+4. Under **Runtime Variables and Secrets**: add `YT_API_KEY` as a **Secret** (restricted to **YouTube Data API v3** only in Google Cloud, with no billing account required).
+
+### Option B: Deploy from your terminal
 
 ```sh
-cd proxy
 npx wrangler login
 npx wrangler secret put YT_API_KEY   # paste your YouTube Data API v3 key
-npx wrangler deploy
+npx wrangler deploy                  # runs npm run build:cf and deploys dist/ + /api/youtube/*
 ```
 
-Copy the deployed `https://devflix-youtube-proxy.<subdomain>.workers.dev` URL into your repository's Actions variables (or secrets) as `VITE_YT_PROXY_URL`. If you previously exposed a key via `VITE_YT_API_KEY`, delete it from GitHub Actions secrets and rotate it in Google Cloud Console.
+Once live at `https://devflix.<your-subdomain>.workers.dev` (or your custom domain), add that URL as an **Authorized JavaScript origin** on your Google OAuth client and as the **Site URL** in Supabase Authentication if you enable accounts.
 
 ## Project structure
 
@@ -155,7 +168,7 @@ Copy the deployed `https://devflix-youtube-proxy.<subdomain>.workers.dev` URL in
 | `App.tsx` | Layout, rows, player and settings dialog |
 | `Onboarding.tsx` | Topic and creator setup |
 | `ChannelsPage.tsx` | Channel browsing and Following |
-| `api.ts` | YouTube requests (proxy or direct), language and category filters |
+| `api.ts` | YouTube requests (same-origin `/api/youtube` proxy or local key), language and category filters |
 | `homeRows.ts` | Discovery rows |
 | `trending.ts` | Trending creators, followed feed, infinite-scroll helper |
 | `creators.ts` | Channel stats, Wikipedia bios, formatting |
@@ -166,11 +179,11 @@ Copy the deployed `https://devflix-youtube-proxy.<subdomain>.workers.dev` URL in
 | `youtubeAuth.ts` | Google sign-in for the import |
 | `youtubeImport.ts` | Reads and sorts subscriptions |
 | `*Store.ts`, `storage.ts`, `preferences.ts` | Local data |
-| `proxy/worker.ts`, `proxy/wrangler.toml` | Cloudflare Worker YouTube API proxy and edge cache |
+| `wrangler.toml`, `proxy/worker.ts` | Standalone Cloudflare Worker serving static assets + `/api/youtube/*` proxy and edge cache |
 
 ## Tests
 
-`npm test` runs 148 tests with Vitest and Testing Library. They cover the proxy worker, onboarding, the feeds and their filters, settings, the import, accounts, and local storage. They mock the network, so they don't use your quota or check live YouTube data.
+`npm test` runs 150 tests with Vitest and Testing Library. They cover the proxy worker, onboarding, the feeds and their filters, settings, the import, accounts, and local storage. They mock the network, so they don't use your quota or check live YouTube data.
 
 ## Workflow and deploys
 
@@ -178,8 +191,6 @@ All changes go through pull requests to `main`.
 
 1. Branch from `main`, commit, and open a PR.
 2. **CI** (`.github/workflows/ci.yml`) runs `npm test` and `npm run build` on every PR and on every push to `main`. The PR can only merge once it passes.
-3. After CI passes on `main`, **Deploy** (`.github/workflows/deploy.yml`) builds the site and publishes it to GitHub Pages. You can also run it by hand from the Actions tab.
+3. **Deploy** happens either automatically via Cloudflare's Git integration, or via `.github/workflows/deploy.yml` after CI passes on `main` when `CLOUDFLARE_API_TOKEN` is set in GitHub Actions secrets.
 
 Dependabot opens weekly PRs for npm updates and monthly ones for GitHub Actions.
-
-Deploys read `VITE_YT_PROXY_URL` (from Actions variables or secrets) plus `VITE_GOOGLE_CLIENT_ID`, `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` from Actions secrets. Add your Pages URL as an authorized JavaScript origin on the OAuth client.

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { handleRequest, type CacheLike, type WorkerEnv } from './worker';
 
-const ORIGIN = 'https://vikatsukanova.github.io';
+const APP_ORIGIN = 'https://devflix.workers.dev';
 const LOCAL_ORIGIN = 'http://localhost:5173';
 const ENV: WorkerEnv = { YT_API_KEY: 'server-secret-key' };
 
@@ -23,47 +23,93 @@ function memoryCache(): CacheLike {
   };
 }
 
-describe('YouTube proxy worker', () => {
-  it('responds to /health without requiring Origin or touching YouTube', async () => {
+describe('YouTube proxy worker (standalone SPA + /api/youtube/*)', () => {
+  it('serves non-API routes from env.ASSETS when bound', async () => {
+    const assetsFetch = vi.fn().mockResolvedValue(new Response('<html>DevFlix</html>', { status: 200 }));
+    const res = await handleRequest(
+      new Request(`${APP_ORIGIN}/`),
+      { ...ENV, ASSETS: { fetch: assetsFetch } },
+      undefined,
+      { cache: null },
+    );
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe('<html>DevFlix</html>');
+    expect(assetsFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('responds to /api/health without requiring Origin or touching YouTube', async () => {
     const fetcher = vi.fn();
-    const res = await handleRequest(new Request('https://proxy.example/health'), ENV, undefined, { fetch: fetcher, cache: null });
+    const res = await handleRequest(new Request(`${APP_ORIGIN}/api/health`), ENV, undefined, { fetch: fetcher, cache: null });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true });
     expect(fetcher).not.toHaveBeenCalled();
   });
 
-  it('rejects missing or disallowed origins with 403', async () => {
+  it('allows same-origin browser fetches via Sec-Fetch-Site or Referer without an Origin header', async () => {
+    const fetcher = vi.fn().mockImplementation(async () => new Response(JSON.stringify({ items: [] }), { status: 200 }));
+
+    const viaFetchSite = await handleRequest(
+      new Request(`${APP_ORIGIN}/api/youtube/search?part=snippet&q=react`, {
+        headers: { 'Sec-Fetch-Site': 'same-origin' },
+      }),
+      ENV,
+      undefined,
+      { fetch: fetcher, cache: null },
+    );
+    expect(viaFetchSite.status).toBe(200);
+
+    const viaReferer = await handleRequest(
+      new Request(`${APP_ORIGIN}/api/youtube/videos?part=snippet&id=abc`, {
+        headers: { Referer: `${APP_ORIGIN}/` },
+      }),
+      ENV,
+      undefined,
+      { fetch: fetcher, cache: null },
+    );
+    expect(viaReferer.status).toBe(200);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it('rejects requests with no origin metadata or a disallowed origin with 403', async () => {
     const fetcher = vi.fn();
-    const noOrigin = await handleRequest(new Request('https://proxy.example/search?q=react'), ENV, undefined, { fetch: fetcher, cache: null });
-    expect(noOrigin.status).toBe(403);
+    const bare = await handleRequest(new Request(`${APP_ORIGIN}/api/youtube/search?q=react`), ENV, undefined, { fetch: fetcher, cache: null });
+    expect(bare.status).toBe(403);
 
     const badOrigin = await handleRequest(
-      new Request('https://proxy.example/search?q=react', { headers: { Origin: 'https://evil.example' } }),
+      new Request(`${APP_ORIGIN}/api/youtube/search?q=react`, { headers: { Origin: 'https://evil.example' } }),
       ENV,
       undefined,
       { fetch: fetcher, cache: null },
     );
     expect(badOrigin.status).toBe(403);
     expect(badOrigin.headers.get('Access-Control-Allow-Origin')).toBeNull();
+
+    const badReferer = await handleRequest(
+      new Request(`${APP_ORIGIN}/api/youtube/search?q=react`, { headers: { Referer: 'https://evil.example/page' } }),
+      ENV,
+      undefined,
+      { fetch: fetcher, cache: null },
+    );
+    expect(badReferer.status).toBe(403);
     expect(fetcher).not.toHaveBeenCalled();
   });
 
-  it('handles CORS preflight for allowed origins', async () => {
+  it('handles CORS preflight for same-origin and allowed dev origins', async () => {
     const res = await handleRequest(
-      new Request('https://proxy.example/search', { method: 'OPTIONS', headers: { Origin: ORIGIN } }),
+      new Request(`${APP_ORIGIN}/api/youtube/search`, { method: 'OPTIONS', headers: { Origin: LOCAL_ORIGIN } }),
       ENV,
       undefined,
       { cache: null },
     );
     expect(res.status).toBe(204);
-    expect(res.headers.get('Access-Control-Allow-Origin')).toBe(ORIGIN);
+    expect(res.headers.get('Access-Control-Allow-Origin')).toBe(LOCAL_ORIGIN);
     expect(res.headers.get('Access-Control-Allow-Methods')).toBe('GET, OPTIONS');
     expect(res.headers.get('Access-Control-Allow-Headers')).toBe('Authorization');
   });
 
-  it('rejects non-GET methods and unknown endpoints', async () => {
+  it('rejects non-GET methods and unknown API endpoints', async () => {
     const post = await handleRequest(
-      new Request('https://proxy.example/search', { method: 'POST', headers: { Origin: ORIGIN } }),
+      new Request(`${APP_ORIGIN}/api/youtube/search`, { method: 'POST', headers: { 'Sec-Fetch-Site': 'same-origin' } }),
       ENV,
       undefined,
       { cache: null },
@@ -71,7 +117,7 @@ describe('YouTube proxy worker', () => {
     expect(post.status).toBe(405);
 
     const unknown = await handleRequest(
-      new Request('https://proxy.example/comments', { headers: { Origin: ORIGIN } }),
+      new Request(`${APP_ORIGIN}/api/youtube/comments`, { headers: { 'Sec-Fetch-Site': 'same-origin' } }),
       ENV,
       undefined,
       { cache: null },
@@ -82,8 +128,8 @@ describe('YouTube proxy worker', () => {
   it('sanitizes query params, ignores caller key, clamps maxResults, and injects server YT_API_KEY', async () => {
     const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({ items: [] }), { status: 200 }));
     const res = await handleRequest(
-      new Request('https://proxy.example/search?part=snippet&q=react&key=attacker&evil=1&maxResults=999', {
-        headers: { Origin: ORIGIN },
+      new Request(`${APP_ORIGIN}/api/youtube/search?part=snippet&q=react&key=attacker&evil=1&maxResults=999`, {
+        headers: { 'Sec-Fetch-Site': 'same-origin' },
       }),
       ENV,
       undefined,
@@ -100,12 +146,12 @@ describe('YouTube proxy worker', () => {
     expect(calledUrl.searchParams.get('evil')).toBeNull();
   });
 
-  it('caches public responses with canonicalized param order and rewrites CORS header per origin', async () => {
+  it('caches public responses with canonicalized param order and sets CORS headers per caller', async () => {
     const cache = memoryCache();
     const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({ items: [{ id: '1' }] }), { status: 200 }));
 
     const first = await handleRequest(
-      new Request('https://proxy.example/search?q=react&part=snippet', { headers: { Origin: LOCAL_ORIGIN } }),
+      new Request(`${APP_ORIGIN}/api/youtube/search?q=react&part=snippet`, { headers: { Origin: LOCAL_ORIGIN } }),
       ENV,
       undefined,
       { fetch: fetcher, cache },
@@ -116,14 +162,14 @@ describe('YouTube proxy worker', () => {
     expect(first.headers.get('Access-Control-Allow-Origin')).toBe(LOCAL_ORIGIN);
 
     const second = await handleRequest(
-      new Request('https://proxy.example/search?part=snippet&q=react', { headers: { Origin: ORIGIN } }),
+      new Request(`${APP_ORIGIN}/api/youtube/search?part=snippet&q=react`, { headers: { 'Sec-Fetch-Site': 'same-origin' } }),
       ENV,
       undefined,
       { fetch: fetcher, cache },
     );
     expect(second.status).toBe(200);
     expect(second.headers.get('X-Cache')).toBe('HIT');
-    expect(second.headers.get('Access-Control-Allow-Origin')).toBe(ORIGIN);
+    expect(second.headers.get('Access-Control-Allow-Origin')).toBeNull();
     expect(await second.json()).toEqual({ items: [{ id: '1' }] });
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
@@ -134,7 +180,7 @@ describe('YouTube proxy worker', () => {
     const fetcher = vi.fn().mockImplementation(async () => new Response(JSON.stringify(errorPayload), { status: 403 }));
 
     const first = await handleRequest(
-      new Request('https://proxy.example/videos?part=snippet&id=abc', { headers: { Origin: ORIGIN } }),
+      new Request(`${APP_ORIGIN}/api/youtube/videos?part=snippet&id=abc`, { headers: { 'Sec-Fetch-Site': 'same-origin' } }),
       ENV,
       undefined,
       { fetch: fetcher, cache },
@@ -144,7 +190,7 @@ describe('YouTube proxy worker', () => {
     expect(await first.json()).toEqual(errorPayload);
 
     await handleRequest(
-      new Request('https://proxy.example/videos?part=snippet&id=abc', { headers: { Origin: ORIGIN } }),
+      new Request(`${APP_ORIGIN}/api/youtube/videos?part=snippet&id=abc`, { headers: { 'Sec-Fetch-Site': 'same-origin' } }),
       ENV,
       undefined,
       { fetch: fetcher, cache },
@@ -152,12 +198,12 @@ describe('YouTube proxy worker', () => {
     expect(fetcher).toHaveBeenCalledTimes(2);
   });
 
-  it('requires Bearer auth on /subscriptions, forwards Authorization, and never caches authenticated calls', async () => {
+  it('requires Bearer auth on /api/youtube/subscriptions, forwards Authorization, and never caches authenticated calls', async () => {
     const cache = memoryCache();
     const fetcher = vi.fn().mockImplementation(async () => new Response(JSON.stringify({ items: [] }), { status: 200 }));
 
     const unauth = await handleRequest(
-      new Request('https://proxy.example/subscriptions?part=snippet&mine=true', { headers: { Origin: ORIGIN } }),
+      new Request(`${APP_ORIGIN}/api/youtube/subscriptions?part=snippet&mine=true`, { headers: { 'Sec-Fetch-Site': 'same-origin' } }),
       ENV,
       undefined,
       { fetch: fetcher, cache },
@@ -165,8 +211,8 @@ describe('YouTube proxy worker', () => {
     expect(unauth.status).toBe(401);
 
     const authed = await handleRequest(
-      new Request('https://proxy.example/subscriptions?part=snippet&mine=true', {
-        headers: { Origin: ORIGIN, Authorization: 'Bearer oauth-token-123' },
+      new Request(`${APP_ORIGIN}/api/youtube/subscriptions?part=snippet&mine=true`, {
+        headers: { 'Sec-Fetch-Site': 'same-origin', Authorization: 'Bearer oauth-token-123' },
       }),
       ENV,
       undefined,
@@ -176,23 +222,23 @@ describe('YouTube proxy worker', () => {
     expect(authed.headers.get('Cache-Control')).toBe('private, no-store');
     expect(fetcher.mock.calls[0][1]).toEqual({ headers: { Authorization: 'Bearer oauth-token-123' } });
 
-    const authedVideos = await handleRequest(
-      new Request('https://proxy.example/channels?part=snippet&id=ch1', {
-        headers: { Origin: ORIGIN, Authorization: 'Bearer oauth-token-123' },
+    const authedChannels = await handleRequest(
+      new Request(`${APP_ORIGIN}/api/youtube/channels?part=snippet&id=ch1`, {
+        headers: { 'Sec-Fetch-Site': 'same-origin', Authorization: 'Bearer oauth-token-123' },
       }),
       ENV,
       undefined,
       { fetch: fetcher, cache },
     );
-    expect(authedVideos.headers.get('Cache-Control')).toBe('private, no-store');
-    expect(authedVideos.headers.get('X-Cache')).toBeNull();
+    expect(authedChannels.headers.get('Cache-Control')).toBe('private, no-store');
+    expect(authedChannels.headers.get('X-Cache')).toBeNull();
   });
 
   it('respects custom ALLOWED_ORIGINS', async () => {
     const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({ items: [] }), { status: 200 }));
     const customEnv: WorkerEnv = { YT_API_KEY: 'k', ALLOWED_ORIGINS: 'https://devflix.example/' };
     const ok = await handleRequest(
-      new Request('https://proxy.example/videos?id=1', { headers: { Origin: 'https://devflix.example' } }),
+      new Request(`${APP_ORIGIN}/api/youtube/videos?id=1`, { headers: { Origin: 'https://devflix.example' } }),
       customEnv,
       undefined,
       { fetch: fetcher, cache: null },
@@ -201,7 +247,7 @@ describe('YouTube proxy worker', () => {
     expect(ok.headers.get('Access-Control-Allow-Origin')).toBe('https://devflix.example');
 
     const denied = await handleRequest(
-      new Request('https://proxy.example/videos?id=1', { headers: { Origin: ORIGIN } }),
+      new Request(`${APP_ORIGIN}/api/youtube/videos?id=1`, { headers: { Origin: LOCAL_ORIGIN } }),
       customEnv,
       undefined,
       { fetch: fetcher, cache: null },

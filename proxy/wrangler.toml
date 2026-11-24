@@ -1,6 +1,0 @@
-name = "devflix-youtube-proxy"
-main = "worker.ts"
-compatibility_date = "2026-01-01"
-
-[vars]
-ALLOWED_ORIGINS = "https://vikatsukanova.github.io,http://localhost:5173,http://127.0.0.1:5173"
