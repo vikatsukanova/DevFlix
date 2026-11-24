@@ -33,7 +33,7 @@ jobs:
       - run: npm ci
       - run: npm run build -- --base=/${{ github.event.repository.name }}/
         env:
-          VITE_YT_API_KEY: ${{ secrets.VITE_YT_API_KEY }}
+          VITE_YT_PROXY_URL: ${{ vars.VITE_YT_PROXY_URL || secrets.VITE_YT_PROXY_URL }}
           VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}

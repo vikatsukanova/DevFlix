@@ -16,11 +16,12 @@ npm run dev
 
 | Variable | Required | What it's for |
 | --- | --- | --- |
-| `VITE_YT_API_KEY` | Yes, for live data | YouTube Data API v3 key. Without it you get a labelled preview catalog. |
+| `VITE_YT_PROXY_URL` | Recommended for public deploys | URL of the Cloudflare Worker in `proxy/` so your YouTube API key never ships in browser JS. |
+| `VITE_YT_API_KEY` | Local dev fallback | YouTube Data API v3 key for running locally without the proxy. Without either variable you get a labelled preview catalog. |
 | `VITE_GOOGLE_CLIENT_ID` | No | Turns on **Import from YouTube** during setup. |
 | `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY` | No | Turns on **Sign in**, so lists and settings follow you across devices. |
 
-Vite variables are visible to anyone using the app, so restrict the API key to the YouTube Data API and your site's URLs in Google Cloud. Restart `npm run dev` after editing `.env.local`.
+Vite variables are visible in the built bundle, so public deploys use `VITE_YT_PROXY_URL` instead of `VITE_YT_API_KEY`. Restart `npm run dev` after editing `.env.local`.
 
 Other commands: `npm test`, `npm run build`, `npm run preview`.
 
@@ -130,7 +131,22 @@ The default quota is 10,000 units a day. Searches cost 100 units. Everything els
 | Each extra page of search results | ~100 units |
 | Subscription import | up to ~500 units |
 
-Results are cached in the browser to keep this down. Home rows refresh at most every 6 hours, and other data every hour. If the quota runs out, rows show an error until it resets at midnight Pacific time.
+Results are cached in the browser (and at the Cloudflare edge when using the proxy) to keep this down. Home rows refresh at most every 6 hours, and other data every hour. If the quota runs out, rows show an error until it resets at midnight Pacific time.
+
+## YouTube proxy (recommended for public deploys)
+
+`proxy/worker.ts` is a zero-dependency Cloudflare Worker that keeps `YT_API_KEY` server-side, restricts requests to DevFlix's origins and the five YouTube endpoints the app uses, strips unknown query parameters, and caches public responses at the edge (6 hours for `search`, 1 hour for `videos`/`channels`/`playlistItems`; authenticated requests are never cached).
+
+To deploy it on Cloudflare's free tier:
+
+```sh
+cd proxy
+npx wrangler login
+npx wrangler secret put YT_API_KEY   # paste your YouTube Data API v3 key
+npx wrangler deploy
+```
+
+Copy the deployed `https://devflix-youtube-proxy.<subdomain>.workers.dev` URL into your repository's Actions variables (or secrets) as `VITE_YT_PROXY_URL`. If you previously exposed a key via `VITE_YT_API_KEY`, delete it from GitHub Actions secrets and rotate it in Google Cloud Console.
 
 ## Project structure
 
@@ -139,7 +155,7 @@ Results are cached in the browser to keep this down. Home rows refresh at most e
 | `App.tsx` | Layout, rows, player and settings dialog |
 | `Onboarding.tsx` | Topic and creator setup |
 | `ChannelsPage.tsx` | Channel browsing and Following |
-| `api.ts` | YouTube requests, language and category filters |
+| `api.ts` | YouTube requests (proxy or direct), language and category filters |
 | `homeRows.ts` | Discovery rows |
 | `trending.ts` | Trending creators, followed feed, infinite-scroll helper |
 | `creators.ts` | Channel stats, Wikipedia bios, formatting |
@@ -150,10 +166,11 @@ Results are cached in the browser to keep this down. Home rows refresh at most e
 | `youtubeAuth.ts` | Google sign-in for the import |
 | `youtubeImport.ts` | Reads and sorts subscriptions |
 | `*Store.ts`, `storage.ts`, `preferences.ts` | Local data |
+| `proxy/worker.ts`, `proxy/wrangler.toml` | Cloudflare Worker YouTube API proxy and edge cache |
 
 ## Tests
 
-`npm test` runs 137 tests with Vitest and Testing Library. They cover onboarding, the feeds and their filters, settings, the import, accounts, and local storage. They mock the network, so they don't use your quota or check live YouTube data.
+`npm test` runs 148 tests with Vitest and Testing Library. They cover the proxy worker, onboarding, the feeds and their filters, settings, the import, accounts, and local storage. They mock the network, so they don't use your quota or check live YouTube data.
 
 ## Workflow and deploys
 
@@ -165,4 +182,4 @@ All changes go through pull requests to `main`.
 
 Dependabot opens weekly PRs for npm updates and monthly ones for GitHub Actions.
 
-Deploys read `VITE_YT_API_KEY`, `VITE_GOOGLE_CLIENT_ID`, `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` from the repository's Actions secrets. These end up in the public bundle, so restrict the API key to your Pages URL, and add the Pages URL as an authorized JavaScript origin on the OAuth client.
+Deploys read `VITE_YT_PROXY_URL` (from Actions variables or secrets) plus `VITE_GOOGLE_CLIENT_ID`, `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` from Actions secrets. Add your Pages URL as an authorized JavaScript origin on the OAuth client.
