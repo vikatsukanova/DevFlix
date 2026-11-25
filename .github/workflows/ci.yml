@@ -13,6 +13,28 @@ permissions:
   contents: read
 
 jobs:
+  backlog-guard:
+    name: Backlog guard
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Fix PRs must not edit BACKLOG.md
+        env:
+          HAS_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'backlog') }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [ "$HAS_LABEL" = true ]; then echo "backlog label present; ledger edit allowed."; exit 0; fi
+          if git diff --name-only "$BASE...$HEAD" | grep -qx BACKLOG.md; then
+            echo "::error::Fix PRs must not edit BACKLOG.md. Claim the item with 'Fixes: DF-…' in the PR title or body; the Stamp backlog workflow marks it done after merge. Ledger-only PRs need the 'backlog' label."
+            exit 1
+          fi
+          echo "BACKLOG.md untouched; ok."
+
   check:
     name: Test & build
     runs-on: ubuntu-latest

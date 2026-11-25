@@ -1,0 +1,88 @@
+name: Stamp backlog
+
+# After a fix PR merges to main, flip its claimed DF-IDs to `done` in BACKLOG.md.
+# Fix PRs declare `Fixes: DF-007` in the title or body and must not edit the ledger;
+# this job is its single writer, serialized by the concurrency group, and commits
+# straight to main.
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      ids:
+        description: Space-separated DF-IDs (e.g. DF-7 DF-11)
+        required: true
+        type: string
+      pr_url:
+        description: Optional PR URL to link from the row
+        required: false
+        type: string
+
+concurrency:
+  group: stamp-backlog
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  stamp:
+    name: Stamp BACKLOG.md
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.pull_request.merged == true &&
+       !contains(github.event.pull_request.labels.*.name, 'backlog'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+
+      - name: Stamp claimed IDs
+        id: stamp
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_URL: ${{ github.event.pull_request.html_url || inputs.pr_url }}
+          DISPATCH_IDS: ${{ inputs.ids }}
+        run: |
+          set -euo pipefail
+          ARGS=(--claims-text "${PR_TITLE}"$'\n'"${PR_BODY}")
+          for id in $DISPATCH_IDS; do ARGS+=(--id "$id"); done
+          [ -n "$PR_URL" ] && ARGS+=(--pr-url "$PR_URL")
+          set +e
+          RESULT="$(node scripts/stamp-backlog.mjs "${ARGS[@]}")"
+          CODE=$?
+          set -e
+          if [ "$CODE" = 2 ]; then echo "No Fixes: DF-… claims; nothing to stamp."; echo "wrote=false" >> "$GITHUB_OUTPUT"; exit 0; fi
+          [ "$CODE" = 0 ] || exit "$CODE"
+          echo "$RESULT"
+          echo "wrote=$(node -e 'console.log(JSON.parse(process.argv[1]).wrote)' "$RESULT")" >> "$GITHUB_OUTPUT"
+          echo "ids=$(node -e 'console.log(JSON.parse(process.argv[1]).changed.join(" "))' "$RESULT")" >> "$GITHUB_OUTPUT"
+
+      - name: Commit stamp to main
+        if: steps.stamp.outputs.wrote == 'true'
+        env:
+          IDS: ${{ steps.stamp.outputs.ids }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          SOURCE: ${{ github.event.pull_request.html_url || 'workflow_dispatch' }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add BACKLOG.md
+          git commit -m "docs(backlog): stamp ${IDS} done" -m "Post-merge ledger update. Source: ${SOURCE}"
+          git pull --rebase origin main
+          git push origin HEAD:main
+          if [ -n "$PR_NUMBER" ]; then
+            gh pr comment "$PR_NUMBER" --body "Backlog stamped \`done\` on \`main\`: ${IDS}"
+          fi
