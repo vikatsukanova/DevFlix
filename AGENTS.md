@@ -36,7 +36,7 @@ npm run build:cf       # the build Cloudflare runs (same-origin /api/youtube pro
 npx wrangler@4 deploy --dry-run   # check the Worker bundles without deploying
 ```
 
-Run `npm test` and `npm run build` before calling anything done. CI (`Test & build`) runs both; `Backlog guard` fails PRs that edit `BACKLOG.md`.
+Run `npm test` and `npm run build` before calling anything done. CI (`Test & build`) runs both; the `Backlog guard` workflow fails PRs that edit `BACKLOG.md`.
 
 ## Rules
 
